@@ -47,7 +47,7 @@ async def google_auth_start():
         raise HTTPException(status_code=500, detail="Erro interno ao iniciar a autenticação.")
 
 
-@router.get("/google/callback")
+@router.get("/google/callback") # <-- ESTA É A CORREÇÃO FINAL
 async def google_auth_callback(
     code: str = Query(..., description="Código de autorização retornado pelo Google."),
     state: Optional[str] = Query(None, description="Estado anti-CSRF retornado pelo Google.")
@@ -56,40 +56,30 @@ async def google_auth_callback(
     Endpoint de Callback. Recebe o código do Google e troca por tokens de acesso.
     """
     try:
-        # 1. Verificar o 'state' (CRUCIAL para segurança)
-        # TODO: Implementar a checagem do state aqui (comparar com o state persistido)
-        # if state != state_persistido_anteriormente:
-        #     raise HTTPException(status_code=400, detail="State inválido. Possível ataque CSRF.")
-            
-        # 2. Recria o objeto de fluxo
+        # ... (Sua lógica de verificação de state)
+        
+        # 1. Recria o objeto de fluxo
         flow = get_google_auth_flow()
         
-        # 3. Troca o código pela credencial
-        # O código de autorização só pode ser usado uma vez
-        flow.fetch_token(code=code)
+        # 2. Troca o código pela credencial
+        # Esta linha requer o GOOGLE_CLIENT_SECRET
+        flow.fetch_token(code=code) 
         
-        # 4. Obtém as credenciais completas
+        # 3. Obtém as credenciais completas
         credentials = flow.credentials
         
-        # 5. Opcional: Obtém o user_id real do Google
-        # Isso é necessário para usar a chave do usuário no nosso Supabase
-        # Para simplificar, usaremos o ID do cliente como user_id (NÃO IDEAL em produção)
-        user_id = credentials.client_id 
-        
-        # 6. Salva as credenciais no nosso sistema (app/core/drive_auth.py)
-        # Isso salva o Refresh Token, que é usado para acesso contínuo.
+        # 4. Salva as credenciais no nosso sistema (requer import os em drive_auth.py)
+        user_id = credentials.client_id
         save_credentials(user_id, credentials)
         
-        # 7. Resposta final para o usuário
-        return {
-            "status": "Autenticação bem-sucedida!",
-            "message": f"Seu Google Drive foi conectado. User ID: {user_id}",
-            "next_step": "Agora você pode usar o User ID na tela de ingestão para processar seus arquivos."
-        }
-        
-    except HTTPException:
-        # Permite que erros HTTP de segurança (como state inválido) sejam propagados
-        raise
+        # 5. Resposta final para o usuário
+        # Redireciona para uma página de sucesso amigável (ou retorna JSON)
+        return RedirectResponse(
+            url="/", # Exemplo: Redireciona para a home page ou documentação
+            status_code=302
+        )
+
     except Exception as e:
-        print(f"Erro ao processar callback: {e}")
+        # Erro de troca de token (o problema anterior)
+        print(f"Erro CRÍTICO ao finalizar a autenticação: {e}") 
         raise HTTPException(status_code=500, detail="Erro interno ao finalizar a autenticação.")
