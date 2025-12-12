@@ -2,7 +2,7 @@
 
 from typing import List, Dict, Any, Union, Tuple
 from langchain_core.documents import Document # Se você usar Document
-from langchain_core.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from ..core.llm_clients import get_embedding_model_client
 from ..core.supabase_client import get_supabase_client # Supabase client configurado
 
