@@ -19,6 +19,7 @@ FROM python:3.11-slim as final
 WORKDIR /app
 
 # --- CORREÇÃO CRUCIAL (1): Instalação do Tesseract-OCR Binário ---
+# Esta etapa é para o Tesseract-OCR, o binário que o pytesseract PRECISA.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         poppler-utils \
@@ -27,9 +28,10 @@ RUN apt-get update && \
         tesseract-ocr-por \
         libpq-dev \
     && rm -rf /var/lib/apt/lists/*
-
+    
 # --- CORREÇÃO FINAL (2): Copia o ambiente Python completo ---
-# Isso garante que o executável 'uvicorn' esteja no PATH.
+# Isso resolve o "ModuleNotFoundError: No module named 'pytesseract'"
+# E também o erro anterior de "uvicorn: executable file not found".
 COPY --from=builder /usr/local /usr/local
 
 # Copia o código da sua aplicação
