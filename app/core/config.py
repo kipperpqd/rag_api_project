@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     # ... Outras configurações (Supabase, LLM Keys) ...
     EMBEDDING_MODEL_NAME: str
+    GENERATION_MODEL_NAME: str
     # --- Configurações do Google Drive ---
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
