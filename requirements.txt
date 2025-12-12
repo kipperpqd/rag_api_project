@@ -23,6 +23,7 @@ Pillow
 langchain # ou llama-index
 #langchain-core 
 langchain-text-splitters
+langchain-community
 
 # O cliente Python para o banco de dados vetorial Supabase
 supabase 
