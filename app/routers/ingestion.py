@@ -110,21 +110,24 @@ async def _process_drive_file_in_background(user_id: str, file_id: str, original
 # 3. ENDPOINT DA API
 # ----------------------------------------------------------------------
 
-@router.post("/processar-drive")
+@router.post("/upload")
 async def process_drive_file(
-    file_id: str, 
-    user_id: str, 
-    original_filename: str, 
+    request: IngestionRequest, # <-- AGORA ACEITA O MODELO COMPLETO
     background_tasks: BackgroundTasks
 ):
     """
     Inicia a ingestão de um arquivo selecionado pelo usuário no Google Drive.
     A tarefa é movida para o background.
     """
-    if not all([file_id, user_id, original_filename]):
-        raise HTTPException(status_code=400, detail="Parâmetros obrigatórios ausentes.")
+    # Não precisamos mais da verificação not all([]) pois o Pydantic já garante que os campos existem.
+
+    # Desempacota os dados do modelo para usar na lógica
+    file_id = request.file_id
+    user_id = request.user_id
+    original_filename = request.original_filename
 
     # Verifica se o user_id possui credenciais válidas antes de iniciar
+    # (Supondo que get_drive_service está corretamente importado)
     if not get_drive_service(user_id):
         raise HTTPException(
             status_code=401, 
@@ -132,6 +135,7 @@ async def process_drive_file(
         )
 
     # Adiciona a tarefa de processamento para ser executada em background
+    # (Supondo que _process_drive_file_in_background está corretamente importado)
     background_tasks.add_task(
         _process_drive_file_in_background, 
         user_id, 
