@@ -36,3 +36,4 @@ openai
 # --- Ferramentas Auxiliares (Ex: Google Drive) ---
 # Para acesso ao Google Drive (necessário para o produto)
 google-api-python-client
+google-auth-oauthlib
