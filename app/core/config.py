@@ -25,11 +25,12 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/auth/google/callback" 
     
     # Escopo (permissões) que sua aplicação precisa (leitura de arquivos)
-    GOOGLE_SCOPES: list[str] = [
-        "https://www.googleapis.com/auth/drive.readonly", # Apenas leitura
-        "https://www.googleapis.com/auth/userinfo.email" # Opcional, para identificar o usuário
+    GOOGLE_SCOPES: List[str] = [
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+        "https://www.googleapis.com/auth/drive.readonly"
     ]
-
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 settings = Settings()
