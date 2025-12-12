@@ -3,17 +3,16 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
-from .base_router import router # Se você tiver um router base, senão use APIRouter
-
+from fastapi import APIRouter # Importa o router padrão do FastAPI
+# Inicializa o router
+router = APIRouter(
+    prefix="/auth", 
+    tags=["Autenticação Google"]
+)
 # Importações dos Core Services
+
 from ..core.drive_auth import get_google_auth_flow, save_credentials
 from ..core.config import settings
-
-# Router dedicado para o fluxo de autenticação
-router = APIRouter(
-    prefix="/auth/google",
-    tags=["Autenticação Google Drive"],
-)
 
 @router.get("/start")
 async def google_auth_start():
