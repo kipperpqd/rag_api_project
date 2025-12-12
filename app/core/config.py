@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     GOOGLE_REDIRECT_URI: str = "http://localhost:8000/auth/google/callback" 
     
     # Escopo (permissões) que sua aplicação precisa (leitura de arquivos)
-    GOOGLE_SCOPES: List[str] = [
+    GOOGLE_SCOPES: list[str] = [
         "openid",
         "https://www.googleapis.com/auth/userinfo.email",
         "https://www.googleapis.com/auth/userinfo.profile",
