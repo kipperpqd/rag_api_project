@@ -13,11 +13,27 @@ from ..services.document_loader import handle_document_load_from_path # Funçao 
 from ..services.ocr_processor import refine_extracted_content
 from ..services.vector_db_manager import run_ingestion_pipeline
 from ..core.drive_auth import get_drive_service # Cliente do Google Drive
+from fastapi import APIRouter, HTTPException, BackgroundTasks
+from pydantic import BaseModel # <-- Importação do BaseModel
 
-router = APIRouter(
-    prefix="/rag/ingest",
-    tags=["Ingestão de Documentos"],
-)
+
+# --- NOVO: Modelo Pydantic para o Corpo da Requisição ---
+class IngestionRequest(BaseModel):
+    file_id: str
+    user_id: str
+    original_filename: str
+    
+    class Config:
+        # Exemplo que aparecerá no Swagger UI
+        schema_extra = {
+            "example": {
+                "file_id": "1A2B3C4D5E6F7G8H9I0J",
+                "user_id": "<SEU_GOOGLE_CLIENT_ID>",
+                "original_filename": "documento_secreto.pdf"
+            }
+        }
+
+router = APIRouter(prefix="/ingestion", tags=["Ingestão"])
 
 # ----------------------------------------------------------------------
 # 1. FUNÇÃO AUXILIAR DE DOWNLOAD
