@@ -14,6 +14,10 @@ python-docx
 # Para arquivos PPTX (caso queira expandir)
 python-pptx 
 
+# *** OCR ***
+pytesseract
+Pillow
+
 # --- RAG Core (Essenciais) ---
 # Frameworks RAG (escolha um ou use ambos com moderação)
 langchain # ou llama-index
