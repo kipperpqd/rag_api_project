@@ -1,4 +1,5 @@
 # app/core/drive_auth.py
+import os
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from google.auth.transport.requests import Request
@@ -6,7 +7,6 @@ from googleapiclient.discovery import build
 from typing import Optional, Dict
 import json
 from .config import settings
-import os
 
 # Caminho para armazenar o token do usuário (Idealmente, usaria um DB seguro, como Supabase)
 TOKEN_STORAGE_PATH = "tokens.json" 
