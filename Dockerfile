@@ -1,13 +1,9 @@
 # ============== FASE 1: BUILDER (Instala dependências Python) ==============
-# Usar uma imagem completa para o build
 FROM python:3.11 AS builder
 
-# Configura o diretório de trabalho
 WORKDIR /app
 
-# É necessário instalar as dependências de sistema (apt-get) para que o pip funcione corretamente
-# com certas bibliotecas, embora o foco da instalação seja no final.
-# Instalar aqui é redundante, mas é uma boa prática para garantir o build completo.
+# Instalar dependências de sistema para o pip (libpq-dev para psycopg2)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         libpq-dev \
@@ -18,15 +14,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ================ FASE 2: EXECUÇÃO (Runtime) ================
-# Usar uma imagem slim para manter o container leve.
 FROM python:3.11-slim as final
 
-# Configura o diretório de trabalho
 WORKDIR /app
 
 # --- CORREÇÃO CRUCIAL (1): Instalação do Tesseract-OCR Binário ---
-# Esta etapa garante que os binários do tesseract e poppler-utils (para PDF)
-# estejam disponíveis no sistema operacional Linux do container final.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         poppler-utils \
@@ -36,12 +28,11 @@ RUN apt-get update && \
         libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# --- CORREÇÃO CRUCIAL (2): Copia os Pacotes Python ---
-# Isso move o pytesseract e todas as outras dependências do estágio 'builder'
-# para o estágio 'final'.
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+# --- CORREÇÃO FINAL (2): Copia o ambiente Python completo ---
+# Isso garante que o executável 'uvicorn' esteja no PATH.
+COPY --from=builder /usr/local /usr/local
 
-# Copia o código da sua aplicação (o Coolify fará isso sem o .env)
+# Copia o código da sua aplicação
 COPY ./app /app/app
 
 # Define o comando de execução
