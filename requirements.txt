@@ -24,7 +24,7 @@ supabase
 # Ex: Para usar Gemini
 # google-genai 
 # Ex: Para usar OpenAI
-# openai 
+openai 
 
 # --- Ferramentas Auxiliares (Ex: Google Drive) ---
 # Para acesso ao Google Drive (necessário para o produto)
