@@ -47,7 +47,7 @@ def get_supabase_client() -> Client:
     return _supabase_client
 
 # Exemplo de como você poderia usar o cliente para uma função de busca de vetores
-async def search_vectors(embedding_vector: List[float], similarity_threshold: float = 0.75, top_k: int = 5) -> List[Dict]:
+async def search_vectors(embedding_vector: list[float], similarity_threshold: float = 0.75, top_k: int = 5) -> list[Dict]:
     """
     Função de busca (RPC) no banco de dados vetorial PostgreSQL (pgvector).
     Esta função será chamada pelo app/routers/chat.py.
