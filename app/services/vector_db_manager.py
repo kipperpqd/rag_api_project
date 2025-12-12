@@ -112,3 +112,36 @@ async def insert_chunks_into_db(chunks: List[Document], embeddings: List[List[fl
     # Placeholder de sucesso
     print("-> Inserção simulada no Supabase bem-sucedida.")
     # return response
+
+# app/services/vector_db_manager.py (Adicione no final)
+# ... (após a função insert_chunks_into_db)
+
+async def run_ingestion_pipeline(refined_content: ConsolidatedText, document_metadata: Dict[str, Any]):
+    """
+    Função principal que orquestra a pipeline de ingestão RAG.
+    
+    1. Cria chunks a partir do conteúdo refinado.
+    2. Gera embeddings para cada chunk.
+    3. Insere os chunks e embeddings no Supabase.
+    """
+    print(f"--- INICIANDO PIPELINE DE INGESTÃO para {document_metadata.get('filename')} ---")
+    
+    # 1. Criação de Chunks
+    chunks = create_chunks(refined_content, document_metadata)
+    
+    if not chunks:
+        print("AVISO: Nenhum chunk foi criado. Ingestão cancelada.")
+        return False
+        
+    # 2. Geração de Embeddings
+    embeddings = await generate_embeddings(chunks)
+    
+    # 3. Inserção no Banco de Dados
+    await insert_chunks_into_db(
+        chunks=chunks,
+        embeddings=embeddings,
+        table_name=document_metadata.get("supabase_table_name", "documents") # Tabela padrão
+    )
+    
+    print(f"--- PIPELINE CONCLUÍDA: {len(chunks)} chunks ingeridos. ---")
+    return True
