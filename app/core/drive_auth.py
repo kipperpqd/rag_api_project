@@ -6,6 +6,7 @@ from googleapiclient.discovery import build
 from typing import Optional, Dict
 import json
 from .config import settings
+import os
 
 # Caminho para armazenar o token do usuário (Idealmente, usaria um DB seguro, como Supabase)
 TOKEN_STORAGE_PATH = "tokens.json" 
