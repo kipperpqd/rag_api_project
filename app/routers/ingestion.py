@@ -25,7 +25,7 @@ class IngestionRequest(BaseModel):
     
     class Config:
         # Exemplo que aparecerá no Swagger UI
-        schema_extra = {
+        json_schema_extra = {
             "example": {
                 "file_id": "1A2B3C4D5E6F7G8H9I0J",
                 "user_id": "<SEU_GOOGLE_CLIENT_ID>",
