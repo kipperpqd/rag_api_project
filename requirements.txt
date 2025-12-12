@@ -22,7 +22,8 @@ Pillow
 # Frameworks RAG (escolha um ou use ambos com moderação)
 langchain # ou llama-index
 #langchain-core 
-#langchain-text-splitters
+langchain-text-splitters
+
 # O cliente Python para o banco de dados vetorial Supabase
 supabase 
 
