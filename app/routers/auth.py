@@ -15,7 +15,7 @@ router = APIRouter(
 from ..core.drive_auth import get_google_auth_flow, save_credentials
 from ..core.config import settings
 
-@router.get("/start")
+@router.get("/google/start")
 async def google_auth_start():
     """
     Inicia o fluxo OAuth 2.0. Redireciona o usuário para a página de consentimento do Google.
