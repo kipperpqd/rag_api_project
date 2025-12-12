@@ -1,5 +1,6 @@
 # app/routers/auth.py
 from fastapi import APIRouter, HTTPException, Query, Request
+from typing import Optional
 from starlette.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
