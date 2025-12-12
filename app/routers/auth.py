@@ -47,7 +47,7 @@ async def google_auth_start():
         raise HTTPException(status_code=500, detail="Erro interno ao iniciar a autenticação.")
 
 
-@router.get("/callback")
+@router.get("/google/callback")
 async def google_auth_callback(
     code: str = Query(..., description="Código de autorização retornado pelo Google."),
     state: Optional[str] = Query(None, description="Estado anti-CSRF retornado pelo Google.")
