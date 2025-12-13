@@ -3,6 +3,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks
 from uuid import uuid4
 import os
 import io
+import traceback
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from googleapiclient.http import MediaIoBaseDownload
@@ -66,6 +67,7 @@ async def download_file_from_drive(service, file_id: str, filename: str, temp_di
 async def _process_drive_file_in_background(user_id: str, file_id: str, original_filename: str):
     """
     Função wrapper que executa o pipeline de ingestão completo para um arquivo do Drive.
+    (Com logs de debug e traceback detalhado para diagnóstico de falha)
     """
     document_id = str(uuid4())
     print(f"\n--- INGESTÃO INICIADA para {original_filename} (ID: {document_id}) ---")
@@ -73,7 +75,6 @@ async def _process_drive_file_in_background(user_id: str, file_id: str, original
     drive_service = get_drive_service(user_id)
     if not drive_service:
         print(f"ERRO: Serviço do Drive indisponível para o usuário {user_id}. Reautenticação necessária.")
-        # Lógica de notificação ao usuário sobre a falha de autenticação
         return
 
     # Usamos TemporaryDirectory para garantir que o arquivo temporário seja excluído no final
@@ -83,43 +84,60 @@ async def _process_drive_file_in_background(user_id: str, file_id: str, original
 
         try:
             # 1. DOWNLOAD (do Drive para o disco temporário)
+            print("DEBUG: Etapa 1: Iniciando download do Drive...")
             temp_file_path = await download_file_from_drive(
                 drive_service, 
                 file_id, 
                 original_filename, 
                 temp_dir
             )
+            print(f"DEBUG: Etapa 1 concluída. Arquivo salvo em: {temp_file_path}")
             
             # 2. CARREGAMENTO (app/services/document_loader.py)
-            # Adapte 'handle_document_load_from_path' em document_loader para usar Path
+            print("DEBUG: Etapa 2: Iniciando handle_document_load_from_path...")
             document_text, document_images, file_type = await handle_document_load_from_path(
                 temp_file_path, 
                 original_filename
             )
+            print("DEBUG: Etapa 2 concluída. Documento carregado.")
             
-            # 3. REFINAMENTO (app/services/ocr_processor.py)
+            # 3. REFINAMENTO (PLUMBER - app/services/ocr_processor.py)
+            print("DEBUG: Etapa 3: Iniciando refine_extracted_content (Plumber)...")
             refined_content = await refine_extracted_content(
                 document_text, 
                 document_images, 
                 file_type
             )
+            print("DEBUG: Etapa 3 concluída. Conteúdo refinado.")
             
             # 4. PIPELINE FINAL (app/services/vector_db_manager.py)
+            print("DEBUG: Etapa 4: Iniciando run_ingestion_pipeline (Chunking/Embedding/DB)...")
             success = await run_ingestion_pipeline(
                 refined_content, 
                 document_id, 
                 original_filename
             )
+            print("DEBUG: Etapa 4 concluída: Inserção no DB.")
             
             if not success:
                 raise Exception("A inserção final no banco de dados falhou.")
                 
+            print(f"--- INGESTÃO CONCLUÍDA COM SUCESSO para {original_filename} ---")
+
         except Exception as e:
-            print(f"ERRO DE INGESTÃO CRÍTICO no arquivo {original_filename}: {e}")
-            # Lógica de logging/notificação de erro
+            # CORREÇÃO CRÍTICA: Imprime a pilha de erros completa
+            print("---------------------------------------------------------")
+            print(f"ERRO DE INGESTÃO CRÍTICO no arquivo {original_filename} (ID: {document_id}):")
             
-        # O 'with TemporaryDirectory()' garante que temp_dir_str seja excluído automaticamente
-        print(f"--- INGESTÃO CONCLUÍDA/FALHA para {original_filename} ---")
+            # Imprime a pilha de execução completa, mostrando a linha exata da falha
+            traceback.print_exc() 
+            
+            # Imprime o erro em sua representação (útil para erros sem mensagem de string)
+            print(f"\n--- Mensagem de Erro Bruta: {repr(e)} ---") 
+            print("---------------------------------------------------------")
+            
+        # O 'with TemporaryDirectory()' garante que o arquivo temporário seja excluído
+        print(f"--- FIM DO PROCESSAMENTO para {original_filename} ---")
 
 
 # ----------------------------------------------------------------------
