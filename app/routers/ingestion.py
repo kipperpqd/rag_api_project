@@ -1,183 +1,155 @@
 # app/routers/ingestion.py
-from fastapi import APIRouter, File, UploadFile, HTTPException, BackgroundTasks
+
+from fastapi import APIRouter, HTTPException, BackgroundTasks
+from pydantic import BaseModel
 from uuid import uuid4
+import shutil
+import asyncio
 import os
-import io
 import traceback
-from pathlib import Path
-from tempfile import TemporaryDirectory
-from googleapiclient.http import MediaIoBaseDownload
-from typing import Optional
+from typing import List, Dict
 
 # Importações dos Services e Core
-from ..services.document_loader import handle_document_load_from_path # Funçao precisa ser adaptada para PATH
+from ..services.document_loader import handle_document_load_from_path
 from ..services.ocr_processor import refine_extracted_content
 from ..services.vector_db_manager import run_ingestion_pipeline
-from ..core.drive_auth import get_drive_service # Cliente do Google Drive
-from fastapi import APIRouter, HTTPException, BackgroundTasks
-from pydantic import BaseModel # <-- Importação do BaseModel
+from ..core.drive_auth import get_drive_service
+
+# Importações do Manager (necessita das funções de download/listagem de pastas)
+from ..services.google_drive_manager import (
+    download_drive_file, get_resource_metadata, list_files_in_folder, DRIVE_MIME_TYPES
+)
 
 
-# --- NOVO: Modelo Pydantic para o Corpo da Requisição ---
+# --- Modelo Pydantic para o Corpo da Requisição ---
 class IngestionRequest(BaseModel):
-    file_id: str
+    """Modelo para receber o ID do recurso (arquivo ou pasta) a ser ingerido."""
+    resource_id: str
     user_id: str
-    original_filename: str
-    
+    original_filename: str = "" # Mantido para compatibilidade, mas pode ser ignorado se for pasta
+
     class Config:
-        # Exemplo que aparecerá no Swagger UI
         json_schema_extra = {
             "example": {
-                "file_id": "1A2B3C4D5E6F7G8H9I0J",
+                "resource_id": "1A2B3C4D5E6F7G8H9I0J",
                 "user_id": "<SEU_GOOGLE_CLIENT_ID>",
-                "original_filename": "documento_secreto.pdf"
+                "original_filename": "pasta_de_contratos"
             }
         }
 
 router = APIRouter(prefix="/ingestion", tags=["Ingestão"])
 
-# ----------------------------------------------------------------------
-# 1. FUNÇÃO AUXILIAR DE DOWNLOAD
-# ----------------------------------------------------------------------
-from googleapiclient.http import MediaIoBaseDownload
-from pathlib import Path
-import io
 
-# Adicione o dicionário de tipos nativos que precisam de exportação
-# Este mapeamento é crucial para a solução.
-GOOGLE_NATIVE_MIME_TYPES = {
-    'application/vnd.google-apps.document': 'application/pdf',  # Google Docs -> PDF
-    'application/vnd.google-apps.spreadsheet': 'application/pdf', # Google Sheets -> PDF
-    'application/vnd.google-apps.presentation': 'application/pdf', # Google Slides -> PDF
-    # Adicione outros tipos nativos se necessário
-}
+# ----------------------------------------------------------------------
+# 1. FUNÇÃO AUXILIAR DE PROCESSAMENTO DE ARQUIVO ÚNICO (CORE)
+# ----------------------------------------------------------------------
 
-async def download_file_from_drive(service, file_id: str, filename: str, temp_dir: Path) -> Path:
+async def _process_single_file_for_ingestion(user_id: str, file_id: str, filename: str) -> bool:
     """
-    Faz o download de um arquivo do Google Drive para um caminho temporário, 
-    lidando com arquivos nativos (exportando para PDF) e não-nativos.
+    Executa a pipeline completa RAG (download, load, refine, chunk, embed, persist) 
+    para um único arquivo, incluindo gerenciamento de diretórios temporários.
     """
+    print(f"--- INGESTÃO INICIADA para {filename} (ID: {file_id}) ---")
     
-    # 1. OBTER METADADOS (para determinar o tipo de arquivo)
-    # Precisamos do mimeType para saber se devemos usar GET ou EXPORT
-    metadata = service.files().get(fileId=file_id, fields='mimeType').execute()
-    mime_type = metadata.get('mimeType')
-    print(f"DEBUG: Tipo MIME do arquivo {file_id}: {mime_type}")
+    download_path = None
+    temp_dir = None
 
-    temp_file_path = temp_dir / filename
-    request = None
-
-    if mime_type in GOOGLE_NATIVE_MIME_TYPES:
-        # 2. SE FOR ARQUIVO NATIVO DO GOOGLE (ex: Docs), USAR EXPORTAÇÃO
-        export_mime = GOOGLE_NATIVE_MIME_TYPES[mime_type]
-        print(f"DEBUG: Arquivo nativo detectado. Exportando como: {export_mime}")
+    try:
+        # Etapa 1: Download (Assumindo que download_drive_file agora lida com exportação)
+        print(f"DEBUG: Etapa 1: Iniciando download de {filename}...")
+        download_path, temp_dir = await download_drive_file(user_id, file_id, filename)
         
-        # O nome do arquivo DEVE refletir a conversão para PDF, caso contrário, 
-        # o document_loader falhará ao tentar ler um .docx como .pdf.
-        if not filename.lower().endswith('.pdf'):
-            temp_file_path = temp_dir / f"{temp_file_path.stem}.pdf"
-            print(f"DEBUG: Novo caminho de arquivo: {temp_file_path}")
+        if not download_path or not os.path.exists(download_path):
+            print(f"ERRO: Falha no download de {filename}. Caminho inválido ou arquivo não encontrado.")
+            return False
 
-        request = service.files().export_media(
-            fileId=file_id,
-            mimeType=export_mime
-        )
-    else:
-        # 3. SE FOR ARQUIVO BINÁRIO (ex: PDF, DOCX, JPG), USAR GET_MEDIA
-        print("DEBUG: Arquivo binário detectado. Usando get_media.")
-        request = service.files().get_media(fileId=file_id)
-
-    # Inicia o download
-    fh = io.FileIO(temp_file_path, 'wb')
-    downloader = MediaIoBaseDownload(fh, request)
-    done = False
+        # Etapa 2: Carregamento
+        print(f"DEBUG: Etapa 2: Carregando documento de {download_path}...")
+        document_content = await handle_document_load_from_path(download_path)
+        
+        # Etapa 3: Refinamento (Plumber/OCR)
+        print("DEBUG: Etapa 3: Refinando conteúdo...")
+        refined_content = await refine_extracted_content(document_content)
+        
+        # Etapa 4: Pipeline RAG (Chunking/Embedding/DB)
+        print("DEBUG: Etapa 4: Iniciando Pipeline RAG (Chunking/Embedding/DB)...")
+        document_uuid = str(uuid4())
+        success = await run_ingestion_pipeline(refined_content, document_uuid, filename)
+        
+        return success
     
-    while done is False:
-        # O erro HttpError ocorria aqui se request fosse um GET em um Google Doc
-        status, done = downloader.next_chunk()
-        # print(f"Download {int(status.progress() * 100)}% de {filename}.")
-            
-    print("DEBUG: Download concluído com sucesso.")
-    return temp_file_path
+    except Exception as e:
+        print(f"ERRO FATAL NA PIPELINE de {filename}: {e}")
+        traceback.print_exc()
+        return False
+        
+    finally:
+        # Limpeza (Remover o diretório temporário)
+        if temp_dir and os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
+            print(f"DEBUG: Limpeza de diretório temporário para {filename} concluída.")
+        
+        print(f"--- INGESTÃO CONCLUÍDA ({'SUCESSO' if 'success' in locals() and success else 'FALHA'}) para {filename} ---")
+
 
 # ----------------------------------------------------------------------
-# 2. FUNÇÃO PRINCIPAL DE PROCESSAMENTO EM BACKGROUND
+# 2. FUNÇÃO DE BACKGROUND (COORDENADOR DE LOTE/ÚNICO)
 # ----------------------------------------------------------------------
 
-async def _process_drive_file_in_background(user_id: str, file_id: str, original_filename: str):
+async def _process_drive_resource_in_background(request: IngestionRequest):
     """
-    Função wrapper que executa o pipeline de ingestão completo para um arquivo do Drive.
-    (Com logs de debug e traceback detalhado para diagnóstico de falha)
+    Função de background que processa o ID de um arquivo (único) ou pasta (lote).
     """
-    document_id = str(uuid4())
-    print(f"\n--- INGESTÃO INICIADA para {original_filename} (ID: {document_id}) ---")
+    resource_id = request.resource_id
+    user_id = request.user_id
+    
+    print(f"--- COORDENADOR INICIADO para recurso: {resource_id} ---")
 
-    drive_service = get_drive_service(user_id)
-    if not drive_service:
-        print(f"ERRO: Serviço do Drive indisponível para o usuário {user_id}. Reautenticação necessária.")
+    # 1. Obter metadados
+    metadata = await get_resource_metadata(user_id, resource_id)
+    if not metadata:
+        print(f"ERRO: Recurso {resource_id} não encontrado ou acesso negado.")
         return
 
-    # Usamos TemporaryDirectory para garantir que o arquivo temporário seja excluído no final
-    with TemporaryDirectory() as temp_dir_str:
-        temp_dir = Path(temp_dir_str)
-        temp_file_path: Optional[Path] = None
+    mime_type = metadata.get('mimeType')
+    files_to_process: List[Dict] = []
+    
+    # 2. Lógica de decisão: Pasta ou Arquivo Único?
+    if mime_type == DRIVE_MIME_TYPES['folder']:
+        print(f"RECURSO DETECTADO: Pasta '{metadata['name']}'. Listando arquivos...")
+        files_to_process = await list_files_in_folder(user_id, resource_id)
+        
+        if not files_to_process:
+            print(f"AVISO: Pasta '{metadata['name']}' vazia ou sem arquivos suportados para ingestão.")
+            return
 
-        try:
-            # 1. DOWNLOAD (do Drive para o disco temporário)
-            print("DEBUG: Etapa 1: Iniciando download do Drive...")
-            temp_file_path = await download_file_from_drive(
-                drive_service, 
-                file_id, 
-                original_filename, 
-                temp_dir
-            )
-            print(f"DEBUG: Etapa 1 concluída. Arquivo salvo em: {temp_file_path}")
-            
-            # 2. CARREGAMENTO (app/services/document_loader.py)
-            print("DEBUG: Etapa 2: Iniciando handle_document_load_from_path...")
-            document_text, document_images, file_type = await handle_document_load_from_path(
-                temp_file_path, 
-                original_filename
-            )
-            print("DEBUG: Etapa 2 concluída. Documento carregado.")
-            
-            # 3. REFINAMENTO (PLUMBER - app/services/ocr_processor.py)
-            print("DEBUG: Etapa 3: Iniciando refine_extracted_content (Plumber)...")
-            refined_content = await refine_extracted_content(
-                document_text, 
-                document_images, 
-                file_type
-            )
-            print("DEBUG: Etapa 3 concluída. Conteúdo refinado.")
-            
-            # 4. PIPELINE FINAL (app/services/vector_db_manager.py)
-            print("DEBUG: Etapa 4: Iniciando run_ingestion_pipeline (Chunking/Embedding/DB)...")
-            success = await run_ingestion_pipeline(
-                refined_content, 
-                document_id, 
-                original_filename
-            )
-            print("DEBUG: Etapa 4 concluída: Inserção no DB.")
-            
-            if not success:
-                raise Exception("A inserção final no banco de dados falhou.")
-                
-            print(f"--- INGESTÃO CONCLUÍDA COM SUCESSO para {original_filename} ---")
+    else:
+        # É um arquivo único (ou um tipo de documento suportado)
+        files_to_process.append({
+            'id': resource_id,
+            'name': metadata['name']
+        })
+        print(f"RECURSO DETECTADO: Arquivo único '{metadata['name']}'.")
 
-        except Exception as e:
-            # CORREÇÃO CRÍTICA: Imprime a pilha de erros completa
-            print("---------------------------------------------------------")
-            print(f"ERRO DE INGESTÃO CRÍTICO no arquivo {original_filename} (ID: {document_id}):")
-            
-            # Imprime a pilha de execução completa, mostrando a linha exata da falha
-            traceback.print_exc() 
-            
-            # Imprime o erro em sua representação (útil para erros sem mensagem de string)
-            print(f"\n--- Mensagem de Erro Bruta: {repr(e)} ---") 
-            print("---------------------------------------------------------")
-            
-        # O 'with TemporaryDirectory()' garante que o arquivo temporário seja excluído
-        print(f"--- FIM DO PROCESSAMENTO para {original_filename} ---")
+    # 3. Iterar e Processar em Paralelo
+    print(f"INICIANDO PROCESSAMENTO DE {len(files_to_process)} ITENS EM PARALELO.")
+    
+    # Cria uma lista de tarefas a serem executadas
+    tasks = [
+        _process_single_file_for_ingestion(user_id, file['id'], file['name'])
+        for file in files_to_process
+    ]
+
+    # Executa todas as tarefas de ingestão usando asyncio.gather
+    processing_results = await asyncio.gather(*tasks)
+
+    # Coleta e loga os resultados
+    results = {}
+    for file, success in zip(files_to_process, processing_results):
+        results[file['name']] = "SUCESSO" if success else "FALHA"
+
+    print("--- PROCESSAMENTO EM LOTE CONCLUÍDO ---")
+    print("RESUMO:", results)
 
 
 # ----------------------------------------------------------------------
@@ -185,41 +157,28 @@ async def _process_drive_file_in_background(user_id: str, file_id: str, original
 # ----------------------------------------------------------------------
 
 @router.post("/upload")
-async def process_drive_file(
-    request: IngestionRequest, # <-- AGORA ACEITA O MODELO COMPLETO
+async def upload_resource_for_ingestion(
+    request: IngestionRequest,
     background_tasks: BackgroundTasks
 ):
     """
-    Inicia a ingestão de um arquivo selecionado pelo usuário no Google Drive.
-    A tarefa é movida para o background.
+    Inicia a ingestão de um arquivo ou pasta do Google Drive em background.
     """
-    # Não precisamos mais da verificação not all([]) pois o Pydantic já garante que os campos existem.
-
-    # Desempacota os dados do modelo para usar na lógica
-    file_id = request.file_id
-    user_id = request.user_id
-    original_filename = request.original_filename
-
-    # Verifica se o user_id possui credenciais válidas antes de iniciar
-    # (Supondo que get_drive_service está corretamente importado)
-    if not get_drive_service(user_id):
+    # 1. Verifica autenticação
+    if not get_drive_service(request.user_id):
         raise HTTPException(
             status_code=401, 
-            detail=f"Usuário {user_id} não autenticado ou token expirado. Por favor, reautentique."
+            detail=f"Usuário {request.user_id} não autenticado ou token expirado. Por favor, reautentique."
         )
 
-    # Adiciona a tarefa de processamento para ser executada em background
-    # (Supondo que _process_drive_file_in_background está corretamente importado)
+    # 2. Adiciona a tarefa de processamento (passando o objeto request completo)
     background_tasks.add_task(
-        _process_drive_file_in_background, 
-        user_id, 
-        file_id, 
-        original_filename
+        _process_drive_resource_in_background, 
+        request
     )
     
-    # Retorna uma resposta HTTP 202 (Accepted) imediatamente.
+    # 3. Retorna a resposta HTTP 202
     return {
         "status": "Processamento iniciado",
-        "message": f"O processamento do arquivo '{original_filename}' foi iniciado em segundo plano.",
-        "file_id": file_id
+        "message": f"O processamento do recurso '{request.resource_id}' foi iniciado em segundo plano. Verifique os logs.",
     }
