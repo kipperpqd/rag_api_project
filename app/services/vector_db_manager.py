@@ -5,6 +5,20 @@ from langchain_core.documents import Document # Se você usar Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from ..core.llm_clients import get_embedding_model_client
 from ..core.supabase_client import get_supabase_client # Supabase client configurado
+from supabase import create_client, Client
+import os
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+
+# Esta função deve ser chamada no início do seu serviço
+def get_supabase_client() -> Client:
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise ValueError("Variáveis de ambiente SUPABASE_URL ou SUPABASE_KEY não definidas.")
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Inicialize o cliente:
+supabase: Client = get_supabase_client()
 
 # Tipo de dado consolidado que recebemos do ocr_processor.py
 ConsolidatedText = List[Dict[str, Union[str, int, str]]] 
