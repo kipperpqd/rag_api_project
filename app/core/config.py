@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL_NAME: str
     EMBEDDING_DIMENSION: str
     GENERATION_MODEL_NAME: str
-    LLM_API_KEY: str
+    OPENAI_API_KEY: str
 
     # URL da sua instância Supabase (Coolify ou serviço externo)
     SUPABASE_URL: str
