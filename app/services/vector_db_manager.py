@@ -171,7 +171,21 @@ async def run_ingestion_pipeline(refined_content: str, document_id: str, origina
 
     # 2. Chunking (Divisão do texto)
     try:
-        # Usa um splitter que respeita caracteres (tokens) para melhor performance em RAG
+        # Verifica se o conteúdo é uma lista e o converte para string
+        if isinstance(refined_content, list):
+            # Assumimos que cada item da lista tem um atributo 'page_content' 
+            # (se forem objetos Document do LangChain) ou são strings.
+            # Vamos tentar juntar o texto de todos os documentos/strings na lista.
+            
+            # Tenta extrair 'page_content' se for objeto LangChain, senão assume que é string
+            text_to_split = "".join([
+                doc.page_content if hasattr(doc, 'page_content') else doc
+                for doc in refined_content
+            ])
+        else:
+            # Se já for uma string, usa diretamente.
+            text_to_split = refined_content
+            
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
@@ -179,14 +193,9 @@ async def run_ingestion_pipeline(refined_content: str, document_id: str, origina
             separators=["\n\n", "\n", " ", ""]
         )
         
-        # Divide o conteúdo refinado em chunks
-        chunks = text_splitter.split_text(refined_content)
+        # CHUNK CORRIGIDO
+        chunks = text_splitter.split_text(text_to_split) 
         print(f"Total de Chunks criados: {len(chunks)}")
-    except Exception as e:
-        print(f"ERRO DE CHUNKING: {e}")
-        traceback.print_exc()
-        return False
-
     # 3. Embedding (Geração de Vetores)
     try:
         print(f"-> Gerando {len(chunks)} embeddings...")
