@@ -10,6 +10,25 @@ import os
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+TABLE_NAME = "documents"
+EMBEDDING_MODEL = "text-embedding-ada-002" # Modelo da OpenAI (1536 dimensões)
+
+# Inicialização do Cliente OpenAI (para embeddings)
+def get_openai_client():
+    # A biblioteca openai geralmente procura pela variável OPENAI_API_KEY
+    if not os.environ.get("OPENAI_API_KEY"):
+        raise ValueError("Variável de ambiente OPENAI_API_KEY não definida.")
+    return OpenAI()
+
+# Inicializações globais
+try:
+    supabase: Client = get_supabase_client()
+    openai_client: OpenAI = get_openai_client()
+    print("INFO: Clientes Supabase e OpenAI inicializados com sucesso.")
+except ValueError as e:
+    print(f"ERRO DE INICIALIZAÇÃO: {e}")
+    supabase = None
+    openai_client = None
 
 # Esta função deve ser chamada no início do seu serviço
 def get_supabase_client() -> Client:
@@ -130,43 +149,94 @@ async def insert_chunks_into_db(chunks: List[Document], embeddings: List[List[fl
 # app/services/vector_db_manager.py (Adicione no final)
 # ... (após a função insert_chunks_into_db)
 
-async def run_ingestion_pipeline(refined_content: str, document_id: str, original_filename: str) -> bool:    
-    """
-    Função principal que orquestra a pipeline de ingestão RAG.
+async def run_ingestion_pipeline(refined_content: str, document_id: str, original_filename: str) -> bool:
     
-    1. Cria chunks a partir do conteúdo refinado.
-    2. Gera embeddings para cada chunk.
-    3. Insere os chunks e embeddings no Supabase.
-    """
+    # 1. Definir Metadados
     document_metadata = {
         "id": document_id,
         "filename": original_filename,
         "source": "Google Drive",
-        # Adicione outros metadados aqui, se necessário
     }
+    
     print(f"--- INICIANDO PIPELINE DE INGESTÃO para {document_metadata.get('filename')} ---")
-    document_metadata = {
-        "id": document_id,
-        "filename": original_filename,
-        "source": "Google Drive",
-        # Adicione outros metadados aqui, se necessário
-    }
-    # 1. Criação de Chunks
-    chunks = create_chunks(refined_content, document_metadata)
-    
-    if not chunks:
-        print("AVISO: Nenhum chunk foi criado. Ingestão cancelada.")
+
+    if not supabase or not openai_client:
+        print("ERRO: Clientes Supabase ou OpenAI não estão inicializados. Abortando ingestão.")
         return False
+
+    # 2. Chunking (Divisão do texto)
+    try:
+        # Usa um splitter que respeita caracteres (tokens) para melhor performance em RAG
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200,
+            length_function=len,
+            separators=["\n\n", "\n", " ", ""]
+        )
         
-    # 2. Geração de Embeddings
-    embeddings = await generate_embeddings(chunks)
+        # Divide o conteúdo refinado em chunks
+        chunks = text_splitter.split_text(refined_content)
+        print(f"Total de Chunks criados: {len(chunks)}")
+    except Exception as e:
+        print(f"ERRO DE CHUNKING: {e}")
+        traceback.print_exc()
+        return False
+
+    # 3. Embedding (Geração de Vetores)
+    try:
+        print(f"-> Gerando {len(chunks)} embeddings...")
+        
+        # Chamada ao modelo de embedding da OpenAI
+        # Nota: Você pode precisar lidar com chamadas em lote (batching) se a lista for muito grande (> 2048 chunks)
+        response = openai_client.embeddings.create(
+            input=chunks,
+            model=EMBEDDING_MODEL
+        )
+        
+        # Extrai os vetores da resposta
+        embeddings = [item.embedding for item in response.data]
+        print("-> Geração de Embeddings concluída.")
+    except Exception as e:
+        print(f"ERRO DE EMBEDDING: Falha ao gerar vetores.")
+        print(f"Verifique sua OPENAI_API_KEY ou cotas de uso.")
+        traceback.print_exc()
+        return False
+
+    # 4. Persistência (Inserção no Supabase)
     
-    # 3. Inserção no Banco de Dados
-    await insert_chunks_into_db(
-        chunks=chunks,
-        embeddings=embeddings,
-        table_name=document_metadata.get("supabase_table_name", "documents") # Tabela padrão
-    )
-    
-    print(f"--- PIPELINE CONCLUÍDA: {len(chunks)} chunks ingeridos. ---")
-    return True
+    # Monta a lista final de registros no formato do Supabase/pgvector
+    records_to_insert = []
+    for i, chunk in enumerate(chunks):
+        records_to_insert.append({
+            "content": chunk,
+            "embedding": embeddings[i],
+            "document_id": document_id,
+            "filename": original_filename,
+            # 'metadata' é um campo JSONB no DB
+            "metadata": document_metadata
+        })
+
+    print(f"-> Inserindo {len(records_to_insert)} registros na tabela '{TABLE_NAME}'...")
+
+    try:
+        # Chamada real ao Supabase (usando a Service Key)
+        response = (
+            supabase
+            .table(TABLE_NAME)
+            .insert(records_to_insert)
+            .execute()
+        )
+
+        # Verifica o sucesso
+        if response.data or (hasattr(response, 'count') and response.count is not None):
+            print(f"-> INSERÇÃO REAL no Supabase bem-sucedida. {len(records_to_insert)} registros adicionados.")
+            return True
+        else:
+            print(f"AVISO: Inserção no Supabase não retornou dados. Verifique a tabela '{TABLE_NAME}'.")
+            return False
+
+    except Exception as e:
+        print(f"ERRO FATAL DE PERSISTÊNCIA: Falha ao inserir no Supabase.")
+        print(f"Detalhes do Erro: {e}")
+        traceback.print_exc()
+        return False
