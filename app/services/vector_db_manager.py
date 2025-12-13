@@ -116,7 +116,7 @@ async def insert_chunks_into_db(chunks: List[Document], embeddings: List[List[fl
 # app/services/vector_db_manager.py (Adicione no final)
 # ... (após a função insert_chunks_into_db)
 
-async def run_ingestion_pipeline(refined_content: ConsolidatedText, document_metadata: Dict[str, Any]):
+async def run_ingestion_pipeline(refined_content: str, document_id: str, original_filename: str) -> bool:    
     """
     Função principal que orquestra a pipeline de ingestão RAG.
     
