@@ -172,21 +172,21 @@ async def run_ingestion_pipeline(refined_content: str, document_id: str, origina
     # 2. Chunking (Divisão do texto)
     chunks = []
     try:
-        # Verifica se o conteúdo é uma lista e o converte para string
+        
+        text_to_split = refined_content # Começa assumindo que é a entrada
+
+        # CORREÇÃO: Extrair o texto de objetos/listas
         if isinstance(refined_content, list):
-            # Assumimos que cada item da lista tem um atributo 'page_content' 
-            # (se forem objetos Document do LangChain) ou são strings.
-            # Vamos tentar juntar o texto de todos os documentos/strings na lista.
-            
-            # Tenta extrair 'page_content' se for objeto LangChain, senão assume que é string
-            text_to_split = "".join([
-                doc.page_content if hasattr(doc, 'page_content') else doc
+            # Assumimos que cada item é um objeto (ex: Document do LangChain)
+            # Acessamos a propriedade de texto e unificamos tudo em uma GRANDE STRING.
+            all_text_content = [
+                doc.page_content if hasattr(doc, 'page_content') else str(doc)
                 for doc in refined_content
-            ])
-        else:
-            # Se já for uma string, usa diretamente.
-            text_to_split = refined_content
-            
+            ]
+            text_to_split = "\n\n".join(all_text_content)
+        
+        # O text_to_split agora é garantido como uma string grande.
+        
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
             chunk_overlap=200,
@@ -194,20 +194,15 @@ async def run_ingestion_pipeline(refined_content: str, document_id: str, origina
             separators=["\n\n", "\n", " ", ""]
         )
         
-        # CHUNK CORRIGIDO
         chunks = text_splitter.split_text(text_to_split) 
-        print(f"Total de Chunks criados: {len(chunks)}")
+        print(f"Total de Chunks criados (pré-filtro): {len(chunks)}")
+        
+                    
     except Exception as e:
-        # O que fazer em caso de falha
-        print(f"Erro capturado: {e}")
-    # CORREÇÃO CRÍTICA: FILTRAGEM DE CHUNKS VAZIOS
-    # -------------------------------------------------------------
-    chunks = [chunk.strip() for chunk in chunks if chunk and chunk.strip()]
-    
-    if not chunks:
-        print("AVISO: Todos os chunks foram filtrados. Documento vazio após chunking.")
-        return True # Ou False, dependendo de como você quer tratar documentos vazios
-    # -------------------------------------------------------------
+        print(f"ERRO DE CHUNKING/FILTRO: {e}")
+        traceback.print_exc()
+        return False
+      
     # 3. Embedding (Geração de Vetores)
     try:
         print(f"-> Gerando {len(chunks)} embeddings...")
