@@ -2,6 +2,7 @@
 from fastapi import FastAPI
 from .routers import ingestion
 from .routers import auth # Importação do novo Router
+from .routers import query
 # Você incluirá o router 'chat' aqui futuramente:
 # from .routers import chat 
 
@@ -16,6 +17,9 @@ app.include_router(ingestion.router)
 
 # 2. Incluir o Router de Autenticação (NOVO)
 app.include_router(auth.router)
+
+# 3. Incluir o Router de perguntas (NOVO)
+app.include_router(query.router)
 
 # 3. Incluir o Router de Chat (futuro)
 # app.include_router(chat.router)
