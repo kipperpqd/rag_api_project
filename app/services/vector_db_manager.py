@@ -197,8 +197,8 @@ async def run_ingestion_pipeline(refined_content: str, document_id: str, origina
         chunks = text_splitter.split_text(text_to_split) 
         print(f"Total de Chunks criados: {len(chunks)}")
     except Exception as e:
-    # O que fazer em caso de falha
-    print(f"Erro capturado: {e}")
+        # O que fazer em caso de falha
+        print(f"Erro capturado: {e}")
     
     # 3. Embedding (Geração de Vetores)
     try:
