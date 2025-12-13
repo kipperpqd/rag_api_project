@@ -7,6 +7,11 @@ from ..core.llm_clients import get_embedding_model_client
 from ..core.supabase_client import get_supabase_client # Supabase client configurado
 from supabase import create_client, Client
 import os
+import json
+import traceback
+# Dependências para Chunking e Embedding
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from openai import OpenAI # Ou o cliente Gemini, se estiver usando Google GenAI
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
