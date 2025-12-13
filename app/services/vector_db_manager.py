@@ -124,6 +124,12 @@ async def run_ingestion_pipeline(refined_content: str, document_id: str, origina
     2. Gera embeddings para cada chunk.
     3. Insere os chunks e embeddings no Supabase.
     """
+    document_metadata = {
+        "id": document_id,
+        "filename": original_filename,
+        "source": "Google Drive",
+        # Adicione outros metadados aqui, se necessário
+    }
     print(f"--- INICIANDO PIPELINE DE INGESTÃO para {document_metadata.get('filename')} ---")
     document_metadata = {
         "id": document_id,
