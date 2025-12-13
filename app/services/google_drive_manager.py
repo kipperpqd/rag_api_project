@@ -1,5 +1,7 @@
 # app/services/google_drive_manager.py
-
+from ..services.google_drive_manager import (
+    download_drive_file, get_resource_metadata, list_files_in_folder, DRIVE_MIME_TYPES
+)
 # ... (Suas importações e funções existentes: get_drive_service, download_drive_file) ...
 
 DRIVE_MIME_TYPES = {
