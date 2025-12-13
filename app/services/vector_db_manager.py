@@ -200,7 +200,14 @@ async def run_ingestion_pipeline(refined_content: str, document_id: str, origina
     except Exception as e:
         # O que fazer em caso de falha
         print(f"Erro capturado: {e}")
+    # CORREÇÃO CRÍTICA: FILTRAGEM DE CHUNKS VAZIOS
+    # -------------------------------------------------------------
+    chunks = [chunk.strip() for chunk in chunks if chunk and chunk.strip()]
     
+    if not chunks:
+        print("AVISO: Todos os chunks foram filtrados. Documento vazio após chunking.")
+        return True # Ou False, dependendo de como você quer tratar documentos vazios
+    # -------------------------------------------------------------
     # 3. Embedding (Geração de Vetores)
     try:
         print(f"-> Gerando {len(chunks)} embeddings...")
