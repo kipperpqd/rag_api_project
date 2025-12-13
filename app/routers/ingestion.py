@@ -154,8 +154,8 @@ async def _process_drive_file_in_background(user_id: str, file_id: str, original
             print("DEBUG: Etapa 4: Iniciando run_ingestion_pipeline (Chunking/Embedding/DB)...")
             success = await run_ingestion_pipeline(
                 refined_content, 
-                document_id 
-                #original_filename
+                document_id, 
+                original_filename
             )
             print("DEBUG: Etapa 4 concluída: Inserção no DB.")
             
