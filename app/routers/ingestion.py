@@ -39,26 +39,66 @@ router = APIRouter(prefix="/ingestion", tags=["Ingestão"])
 # ----------------------------------------------------------------------
 # 1. FUNÇÃO AUXILIAR DE DOWNLOAD
 # ----------------------------------------------------------------------
+from googleapiclient.http import MediaIoBaseDownload
+from pathlib import Path
+import io
+
+# Adicione o dicionário de tipos nativos que precisam de exportação
+# Este mapeamento é crucial para a solução.
+GOOGLE_NATIVE_MIME_TYPES = {
+    'application/vnd.google-apps.document': 'application/pdf',  # Google Docs -> PDF
+    'application/vnd.google-apps.spreadsheet': 'application/pdf', # Google Sheets -> PDF
+    'application/vnd.google-apps.presentation': 'application/pdf', # Google Slides -> PDF
+    # Adicione outros tipos nativos se necessário
+}
 
 async def download_file_from_drive(service, file_id: str, filename: str, temp_dir: Path) -> Path:
-    """Faz o download de um arquivo do Google Drive para um caminho temporário."""
+    """
+    Faz o download de um arquivo do Google Drive para um caminho temporário, 
+    lidando com arquivos nativos (exportando para PDF) e não-nativos.
+    """
     
-    request = service.files().get_media(fileId=file_id)
+    # 1. OBTER METADADOS (para determinar o tipo de arquivo)
+    # Precisamos do mimeType para saber se devemos usar GET ou EXPORT
+    metadata = service.files().get(fileId=file_id, fields='mimeType').execute()
+    mime_type = metadata.get('mimeType')
+    print(f"DEBUG: Tipo MIME do arquivo {file_id}: {mime_type}")
+
     temp_file_path = temp_dir / filename
-    
-    # Usa um buffer de IO para o download
+    request = None
+
+    if mime_type in GOOGLE_NATIVE_MIME_TYPES:
+        # 2. SE FOR ARQUIVO NATIVO DO GOOGLE (ex: Docs), USAR EXPORTAÇÃO
+        export_mime = GOOGLE_NATIVE_MIME_TYPES[mime_type]
+        print(f"DEBUG: Arquivo nativo detectado. Exportando como: {export_mime}")
+        
+        # O nome do arquivo DEVE refletir a conversão para PDF, caso contrário, 
+        # o document_loader falhará ao tentar ler um .docx como .pdf.
+        if not filename.lower().endswith('.pdf'):
+            temp_file_path = temp_dir / f"{temp_file_path.stem}.pdf"
+            print(f"DEBUG: Novo caminho de arquivo: {temp_file_path}")
+
+        request = service.files().export_media(
+            fileId=file_id,
+            mimeType=export_mime
+        )
+    else:
+        # 3. SE FOR ARQUIVO BINÁRIO (ex: PDF, DOCX, JPG), USAR GET_MEDIA
+        print("DEBUG: Arquivo binário detectado. Usando get_media.")
+        request = service.files().get_media(fileId=file_id)
+
+    # Inicia o download
     fh = io.FileIO(temp_file_path, 'wb')
     downloader = MediaIoBaseDownload(fh, request)
     done = False
     
-    # Loop de download (executado de forma síncrona dentro da tarefa assíncrona)
     while done is False:
+        # O erro HttpError ocorria aqui se request fosse um GET em um Google Doc
         status, done = downloader.next_chunk()
-        # O print abaixo é opcional e pode ser removido em produção
-        # print(f"Download {int(status.progress() * 100)}% de {filename}.") 
+        # print(f"Download {int(status.progress() * 100)}% de {filename}.")
             
+    print("DEBUG: Download concluído com sucesso.")
     return temp_file_path
-
 
 # ----------------------------------------------------------------------
 # 2. FUNÇÃO PRINCIPAL DE PROCESSAMENTO EM BACKGROUND
