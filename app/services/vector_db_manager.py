@@ -170,6 +170,7 @@ async def run_ingestion_pipeline(refined_content: str, document_id: str, origina
         return False
 
     # 2. Chunking (Divisão do texto)
+    chunks = []
     try:
         # Verifica se o conteúdo é uma lista e o converte para string
         if isinstance(refined_content, list):
