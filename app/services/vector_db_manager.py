@@ -204,6 +204,12 @@ async def run_ingestion_pipeline(refined_content: str, document_id: str, origina
     # 3. Embedding (Geração de Vetores)
     try:
         print(f"-> Gerando {len(chunks)} embeddings...")
+    
+        # NOVOS LOGS DE VERIFICAÇÃO CRÍTICOS:
+        print(f"DEBUG_EMBEDDING: Tipo de 'chunks': {type(chunks)}")
+        if chunks:
+            print(f"DEBUG_EMBEDDING: Tipo do primeiro item: {type(chunks[0])}")
+            print(f"DEBUG_EMBEDDING: Tamanho do primeiro item: {len(chunks[0])}")
         
         # Chamada ao modelo de embedding da OpenAI
         # Nota: Você pode precisar lidar com chamadas em lote (batching) se a lista for muito grande (> 2048 chunks)
