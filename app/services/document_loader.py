@@ -174,8 +174,8 @@ async def handle_document_load_from_path(
     
     try:
         # GARANTIA 2: Passa o objeto Path para os loaders internos (resolveu o AttributeError)
-        document_text, _ = loader_function(file_path)
-        return document_text
+        document_text, document_images = loader_function(file_path)
+        return document_text, document_images, file_extension
         
     except Exception as e:
         print(f"ERRO durante o carregamento do arquivo {original_filename} usando {loader_function.__name__}: {e}")
