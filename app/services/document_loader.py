@@ -28,14 +28,6 @@ except ImportError:
 # --- Tipos de Saída ---
 DocumentContent = str
 
-# --- MAPA DE LOADERS ---
-# Mapeia a extensão (com ponto) para a função de carregamento
-LOADER_MAPPING: Dict[str, Callable[[Path], Tuple[DocumentContent, Any]]] = {
-    ".pdf": load_pdf_file,  # Função que lê PDF
-    ".docx": load_docx_file, # Função que lê DOCX
-    ".txt": load_txt_file,  # Função que lê TXT
-    # Adicione outros formatos suportados aqui (.md, .html, etc.)
-}
 
 # ----------------------------------------------------------------------
 # 1. FUNÇÕES DE CARREGAMENTO (LOADERS)
