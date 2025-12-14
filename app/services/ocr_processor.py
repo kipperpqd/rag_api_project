@@ -7,6 +7,8 @@ from pytesseract import image_to_string
 # Importações dos Core Services
 from ..core.llm_clients import get_multimodal_llm_client # Cliente LLM para visão
 # from ..core.config import settings # Para configurações, se necessário
+from pathlib import Path
+import pdfplumber
 
 # Definição de tipo customizado para o resultado consolidado (usado em vector_db_manager)
 ConsolidatedText = List[Dict[str, Union[str, int, str]]] 
@@ -78,6 +80,46 @@ async def describe_visual_element(image_data: ImageObject, context: str, page_nu
         # Retorna um fallback de erro
         return f"[ERRO LLM] Não foi possível obter descrição multimodal para a página {page_number}. Erro: {e}"
 
+# ----------------------------------------------------------------------
+# 1.5 FUNÇÃO DE PRÉ-OCR (Orquestração Tesseract)
+# ----------------------------------------------------------------------
+
+def orchestrate_pre_ocr(file_path: Path) -> List[str]:
+    """
+    Orquestra o OCR tradicional (PyTesseract) para um PDF escaneado.
+    Itera sobre as páginas, converte para imagem e executa o OCR.
+    Retorna uma lista de strings, uma por página.
+    """
+    print(f"-> OCR Tradicional: Iniciando pré-processamento OCR para {file_path.name}")
+    ocr_text_by_page = []
+    
+    try:
+        with pdfplumber.open(file_path) as pdf:
+            for i, page in enumerate(pdf.pages):
+                
+                # Renderiza a página como imagem (Requer Poppler instalado)
+                try:
+                    page_image = page.to_image(resolution=300) # Alta resolução para melhor OCR
+                    image_data: ImageObject = page_image.original # Objeto PIL Image
+                    
+                    ocr_result = run_traditional_ocr(image_data)
+                    
+                    if ocr_result.strip():
+                        print(f"-> OCR Tradicional: Texto extraído da página {i+1} ({len(ocr_result)} chars).")
+                        ocr_text_by_page.append(ocr_result)
+                    else:
+                        print(f"-> OCR Tradicional: Nenhuma saída na página {i+1}.")
+                        ocr_text_by_page.append(CONTENT_MISSING_TEXTUAL)
+                        
+                except Exception as page_e:
+                    print(f"AVISO: Falha ao processar página {i+1} para OCR (Poppler/Tesseract): {page_e}")
+                    ocr_text_by_page.append(CONTENT_MISSING_TEXTUAL)
+                    
+        return ocr_text_by_page
+        
+    except Exception as e:
+        print(f"ERRO: Falha na orquestração de pré-OCR para {file_path.name}: {e}")
+        return []
 
 # ----------------------------------------------------------------------
 # 2. FUNÇÃO PRINCIPAL: ORQUESTRAÇÃO
