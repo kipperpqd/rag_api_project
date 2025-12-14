@@ -121,25 +121,26 @@ async def _process_single_file_for_ingestion(user_id: str, file_id: str, filenam
         
         refined_sections_for_chunking = []
         for section in structured_sections:
-             refined_sections_for_chunking.append({
-                 "page_number": section['metadata'].get("page_start", 1), # Usar page_start se houver
+             # Cópia dos metadados gerais
+             metadata_base = {
+                 "page_number": section['metadata'].get("page_start", 1),
                  "content_type": section['metadata'].get("chunk_type", "TEXT_BLOCK"), 
-                 "text": section['text'],
                  "metadata_source": "ANALYSIS_STRUCTURED",
-                 "article": section['metadata'].get("article"), # Novo Metadado
-                 "chapter": section['metadata'].get("chapter"), # Novo Metadado
+                 # Adiciona os metadados hierárquicos (Artigo/Capítulo)
+                 "article": section['metadata'].get("article"), 
+                 "chapter": section['metadata'].get("chapter"), 
+             }
+             
+             refined_sections_for_chunking.append({
+                 "text": section['text'],
+                 "metadata": metadata_base # Passa o dicionário de metadados completo
              })
 
         # Etapa 5: Pipeline RAG (Chunking/Embedding/DB)
         print("DEBUG: Etapa 5: Iniciando Pipeline RAG (Chunking Estrutural)...")
         document_uuid = str(uuid4())
         
-        # A função run_ingestion_pipeline (ou create_chunks_and_embeddings) DEVE
-        # ser ajustada para usar refined_sections_for_chunking em vez de refined_content
-        # se ela espera uma lista de dicionários.
-        
         success = await run_ingestion_pipeline(refined_sections_for_chunking, document_uuid, filename)
-        
         return success
     
     except Exception as e:
