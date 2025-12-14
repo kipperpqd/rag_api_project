@@ -123,7 +123,7 @@ def load_txt_file(file_path: Path) -> Tuple[List[str], List[Any]]:
 # MAPA E ORQUESTRAÇÃO
 # ----------------------------------------------------------------------
 
-LOADER_MAP = {
+LOADER_MAPPING = {
     ".pdf": load_pdf_file,
     ".docx": load_docx_file,
     ".txt": load_txt_file,
