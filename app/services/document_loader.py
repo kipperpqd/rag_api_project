@@ -28,6 +28,17 @@ except ImportError:
 # --- Tipos de Saída ---
 DocumentContent = str
 
+# ----------------------------------------------------------------------
+# MAPA E ORQUESTRAÇÃO
+# ----------------------------------------------------------------------
+
+LOADER_MAP = {
+    ".pdf": load_pdf_file,
+    ".docx": load_docx_file,
+    ".txt": load_txt_file,
+    # Adicionar outros formatos aqui (ex: .pptx, .xlsx)
+}
+
 
 # ----------------------------------------------------------------------
 # 1. FUNÇÕES DE CARREGAMENTO (LOADERS)
@@ -121,16 +132,7 @@ def load_txt_file(file_path: Path) -> Tuple[List[str], List[Any]]:
     return texto_completo, []
 
 
-# ----------------------------------------------------------------------
-# 2. MAPA E ORQUESTRAÇÃO
-# ----------------------------------------------------------------------
 
-LOADER_MAP = {
-    ".pdf": load_pdf_file,
-    ".docx": load_docx_file,
-    ".txt": load_txt_file,
-    # Adicionar outros formatos aqui (ex: .pptx, .xlsx)
-}
 
 # ----------------------------------------------------------------------
 # FUNÇÃO CENTRAL DE DESPACHO
