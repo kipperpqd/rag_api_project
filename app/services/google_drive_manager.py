@@ -94,18 +94,16 @@ async def list_files_in_folder(user_id: str, folder_id: str) -> List[Dict]:
 # 2. FUNÇÃO PRINCIPAL DE DOWNLOAD (SUPORTE A EXPORTAÇÃO)
 # ----------------------------------------------------------------------
 
-async def download_drive_file(user_id: str, file_id: str, filename: str) -> Tuple[str | None, str | None]:
+async def download_drive_file(user_id: str, file_id: str, filename: str, temp_dir_path: str) -> str | None:
     """
-    Faz o download de um arquivo do Google Drive. 
-    Lida com arquivos binários (GET) e nativos (EXPORT para PDF).
-    Retorna (caminho_do_arquivo, caminho_do_diretório_temporário)
+    Faz o download de um arquivo do Google Drive para o diretório temporário fornecido. 
+    Retorna apenas o caminho completo do arquivo baixado (ou None em caso de falha).
     """
     service = get_drive_service(user_id)
     if not service:
-        return None, None
+        return None
         
-    temp_dir = TemporaryDirectory()
-    temp_dir_path = temp_dir.name
+    # O caminho do diretório temporário é recebido como string
     temp_file_path = Path(temp_dir_path) / filename
     
     print(f"DEBUG: Iniciando download para caminho temporário: {temp_dir_path}")
@@ -145,11 +143,9 @@ async def download_drive_file(user_id: str, file_id: str, filename: str) -> Tupl
             status, done = downloader.next_chunk()
             
         print(f"DEBUG: Download de {filename} concluído com sucesso em {temp_file_path}")
-        return str(temp_file_path), temp_dir_path
+        return str(temp_file_path) # Retorna APENAS o caminho do arquivo
         
     except Exception as e:
         print(f"ERRO: Falha no download ou exportação do arquivo {file_id}: {e}")
-        # Limpa o diretório temporário se a operação falhar
-        if temp_dir:
-            shutil.rmtree(temp_dir_path)
-        return None, None
+        # NENHUMA LIMPEZA AQUI! O chamador é responsável pelo TemporaryDirectory.
+        return None
