@@ -1,6 +1,7 @@
 # app/routers/ingestion.py
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
+from tempfile import TemporaryDirectory
 from pydantic import BaseModel
 from uuid import uuid4
 import shutil
@@ -47,23 +48,28 @@ router = APIRouter(prefix="/ingestion", tags=["Ingestão"])
 async def _process_single_file_for_ingestion(user_id: str, file_id: str, filename: str) -> bool:
     """
     Executa a pipeline completa RAG (download, load, refine, chunk, embed, persist) 
-    para um único arquivo, incluindo gerenciamento de diretórios temporários.
+    para um único arquivo, com gerenciamento correto de diretório temporário.
     """
     print(f"--- INGESTÃO INICIADA para {filename} (ID: {file_id}) ---")
     
     download_path = None
-    temp_dir = None
+    success = False
+    
+    # NOVO: Criamos o objeto TemporaryDirectory para gerenciar seu ciclo de vida
+    temp_dir_obj = TemporaryDirectory()
+    temp_dir = temp_dir_obj.name
 
     try:
-        # Etapa 1: Download (Assumindo que download_drive_file agora lida com exportação)
-        print(f"DEBUG: Etapa 1: Iniciando download de {filename}...")
-        download_path, temp_dir = await download_drive_file(user_id, file_id, filename)
+        # Etapa 1: Download
+        # Chamamos download_drive_file, passando o caminho do diretório temporário
+        download_path = await download_drive_file(user_id, file_id, filename, temp_dir) 
         
-        if not download_path or not os.path.exists(download_path):
+        if not download_path:
+            # Esta mensagem de erro é ativada se download_drive_file retornar None
             print(f"ERRO: Falha no download de {filename}. Caminho inválido ou arquivo não encontrado.")
             return False
 
-        # Etapa 2: Carregamento
+        # Etapa 2: Carregamento (O arquivo AGORA existe!)
         print(f"DEBUG: Etapa 2: Carregando documento de {download_path}...")
         document_content = await handle_document_load_from_path(download_path)
         
@@ -72,24 +78,25 @@ async def _process_single_file_for_ingestion(user_id: str, file_id: str, filenam
         refined_content = await refine_extracted_content(document_content)
         
         # Etapa 4: Pipeline RAG (Chunking/Embedding/DB)
-        print("DEBUG: Etapa 4: Iniciando Pipeline RAG (Chunking/Embedding/DB)...")
+        print("DEBUG: Etapa 4: Iniciando Pipeline RAG...")
         document_uuid = str(uuid4())
         success = await run_ingestion_pipeline(refined_content, document_uuid, filename)
         
         return success
     
     except Exception as e:
+        # Captura qualquer falha subsequente (Carregamento, Refinamento ou DB)
+        import traceback
         print(f"ERRO FATAL NA PIPELINE de {filename}: {e}")
         traceback.print_exc()
         return False
         
     finally:
-        # Limpeza (Remover o diretório temporário)
-        if temp_dir and os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir)
-            print(f"DEBUG: Limpeza de diretório temporário para {filename} concluída.")
+        # Limpeza (CHAMADA EXPLÍCITA: O objeto é limpo AGORA e não quando a função retorna)
+        temp_dir_obj.cleanup() 
+        print(f"DEBUG: Limpeza de diretório temporário para {filename} concluída.")
         
-        print(f"--- INGESTÃO CONCLUÍDA ({'SUCESSO' if 'success' in locals() and success else 'FALHA'}) para {filename} ---")
+        print(f"--- INGESTÃO CONCLUÍDA ({'SUCESSO' if success else 'FALHA'}) para {filename} ---")
 
 
 # ----------------------------------------------------------------------
