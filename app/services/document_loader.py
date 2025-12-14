@@ -153,11 +153,19 @@ async def handle_document_load_from_path(
     Returns:
         O conteúdo extraído (DocumentContent).
     """
+    # 1. Obter a extensão LÓGICA do arquivo original
+    file_extension = Path(original_filename).suffix.lower()
     
-    # GARANTIA 1: Usa o nome original para determinar a EXTENSÃO LÓGICA
-    # Isso é CRUCIAL, pois um Google Doc (Documento.gdoc) é baixado como PDF (Documento.pdf).
-    file_extension = Path(original_filename).suffix.lower() 
-    
+    # --- NOVO TRATAMENTO PARA ARQUIVOS NATIVOS SEM EXTENSÃO NO NOME ---
+    if not file_extension:
+        # Se o nome original não tem extensão (ex: "Documento"), mas o arquivo foi baixado/exportado
+        # como PDF (o que acontece com Google Docs/Sheets/Slides), usamos o sufixo do arquivo REAL.
+        # Ex: original_filename="Documento", file_path="/tmp/doc.pdf"
+        
+        real_extension = file_path.suffix.lower()
+        print(f"DEBUG Loader: Extensão lógica ausente ('{original_filename}'). Usando extensão real de download: '{real_extension}'")
+        file_extension = real_extension
+
     print(f"DEBUG Loader: Arquivo original: '{original_filename}'. Extensão detectada: '{file_extension}'")
 
     if not file_extension or file_extension not in LOADER_MAPPING:
