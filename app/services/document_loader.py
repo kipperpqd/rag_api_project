@@ -2,6 +2,8 @@
 import os
 from typing import List, Tuple, Dict, Any, Union
 from pathlib import Path
+import odf.opendocument
+import odf.text
 
 # --- Importações de Bibliotecas de Terceiros ---
 try:
@@ -119,6 +121,39 @@ def load_txt_file(file_path: Path) -> Tuple[List[str], List[Any]]:
         
     return texto_completo, []
 
+def load_odt_file(file_path: Path) -> Tuple[List[str], List[Any]]:
+    """
+    Carrega um arquivo ODT (OpenDocument Text) e extrai o conteúdo textual.
+    """
+    if odf.opendocument is None:
+        print(f"-> ODT Loader: MOCK USADO - odfpy não disponível.")
+        return [f"Conteúdo mock de ODT para {file_path.name}"], []
+        
+    print(f"-> ODT Loader: Extraindo conteúdo textual de {file_path.name}")
+    
+    full_text = []
+    
+    try:
+        # Abre o arquivo ODT
+        doc = odf.opendocument.load(file_path)
+        
+        # Itera sobre todos os elementos <text:p> (parágrafos) no corpo do documento
+        for element in doc.getElementsByType(odf.text.P):
+            text_content = str(element)
+            if text_content.strip():
+                full_text.append(text_content)
+
+        # Retorna o texto concatenado como uma única string na lista (similar ao DOCX)
+        texto_completo = ["\n".join(full_text)]
+        
+        return texto_completo, []
+        
+    except Exception as e:
+        print(f"ERRO ao processar ODT {file_path.name}: {e}")
+        return [f"ERRO DE PROCESSAMENTO ODT: Falha ao ler o arquivo {file_path.name}"], []
+
+
+
 # ----------------------------------------------------------------------
 # MAPA E ORQUESTRAÇÃO
 # ----------------------------------------------------------------------
@@ -127,6 +162,7 @@ LOADER_MAPPING = {
     ".pdf": load_pdf_file,
     ".docx": load_docx_file,
     ".txt": load_txt_file,
+    ".odt": load_odt_file,
     # Adicionar outros formatos aqui (ex: .pptx, .xlsx)
 }
 
