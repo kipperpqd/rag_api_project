@@ -154,107 +154,130 @@ async def insert_chunks_into_db(chunks: List[Document], embeddings: List[List[fl
 # app/services/vector_db_manager.py (Adicione no final)
 # ... (após a função insert_chunks_into_db)
 
-async def run_ingestion_pipeline(refined_content: str, document_id: str, original_filename: str) -> bool:
+async def run_ingestion_pipeline(sections: List[Dict[str, Any]], document_id: str, original_filename: str) -> bool:
+    """
+    Executa o Chunking Estrutural, Embedding e Persistência no Supabase.
     
-    # 1. Definir Metadados
-    document_metadata = {
+    A entrada 'sections' agora é uma lista de dicionários, onde cada item
+    contém o 'text' (ex: um Artigo inteiro) e os 'metadata' estruturais.
+    
+    :param sections: Lista de seções estruturadas (Artigos/Capítulos) com metadados.
+    """
+    
+    # 1. Definir Metadados Base (Metadados que são os mesmos para todos os chunks)
+    document_metadata_base = {
         "id": document_id,
         "filename": original_filename,
         "source": "Google Drive",
     }
     
-    print(f"--- INICIANDO PIPELINE DE INGESTÃO para {document_metadata.get('filename')} ---")
+    print(f"--- INICIANDO PIPELINE DE INGESTÃO para {document_metadata_base.get('filename')} ---")
 
     if not supabase or not openai_client:
         print("ERRO: Clientes Supabase ou OpenAI não estão inicializados. Abortando ingestão.")
         return False
 
-    # 2. Chunking (Divisão do texto)
-    chunks = []
-    try:
-        
-        text_to_split = refined_content # Começa assumindo que é a entrada
+    # 2. Chunking Estrutural (Herança de Metadados)
+    all_final_chunks = []
+    
+    # Função auxiliar para dividir o texto (usada se uma seção for muito longa)
+    # Mantemos uma função simples, pois a quebra principal já é por seção
+    def simple_text_splitter(text: str, max_len: int = 750) -> List[str]:
+        # Usamos uma quebra simples, pois a quebra semântica já foi feita pelo analisador de Artigos
+        return [text[i:i + max_len] for i in range(0, len(text), max_len)]
 
-        # CORREÇÃO: Extrair o texto de objetos/listas
-        if isinstance(refined_content, list):
-            # Assumimos que cada item é um objeto (ex: Document do LangChain)
-            # Acessamos a propriedade de texto e unificamos tudo em uma GRANDE STRING.
-            all_text_content = [
-                doc.page_content if hasattr(doc, 'page_content') else str(doc)
-                for doc in refined_content
-            ]
-            text_to_split = "\n\n".join(all_text_content)
+    try:
+        # Itera sobre CADA SEÇÃO ESTRUTURAL (Artigo, Capítulo, Preâmbulo)
+        for section in sections:
+            
+            section_text = section['text']
+            # Metadados herdados do analisador estrutural (Artigo, Capítulo, etc.)
+            inherited_metadata = section['metadata'] 
+            
+            # Divide o texto da seção em sub-chunks (se o Artigo for muito longo)
+            sub_chunks = simple_text_splitter(section_text)
+            
+            # Anexa os metadados herdados a cada sub-chunk
+            for i, chunk_text in enumerate(sub_chunks):
+                
+                # Combina metadados globais (document_id) com metadados estruturais (article, chapter)
+                final_metadata = document_metadata_base.copy()
+                
+                # Adiciona metadados de controle de posição
+                final_metadata.update({
+                    "chunk_index": i,  
+                    "total_chunks_in_section": len(sub_chunks),
+                })
+                
+                # IMPORTANTE: HERDA OS METADADOS ESTRUTURAIS
+                final_metadata.update({
+                    "article": inherited_metadata.get('article', 'N/A'),
+                    "chapter": inherited_metadata.get('chapter', 'N/A'),
+                    "content_type": inherited_metadata.get('content_type', 'TEXT'),
+                    "page_number": inherited_metadata.get('page_number', 'N/A'),
+                })
+                
+                all_final_chunks.append({
+                    "content": chunk_text,
+                    "metadata": final_metadata # Dicionário de metadados completo
+                })
+                
+        print(f"Total de Chunks criados (pós-estrutural): {len(all_final_chunks)}")
         
-        # O text_to_split agora é garantido como uma string grande.
-        
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
-            length_function=len,
-            separators=["\n\n", "\n", " ", ""]
-        )
-        
-        chunks = text_splitter.split_text(text_to_split) 
-        print(f"Total de Chunks criados (pré-filtro): {len(chunks)}")
-        
-                    
     except Exception as e:
-        print(f"ERRO DE CHUNKING/FILTRO: {e}")
+        print(f"ERRO DE CHUNKING ESTRUTURAL: {e}")
         traceback.print_exc()
         return False
-      
+
     # 3. Embedding (Geração de Vetores)
-    try:
-        print(f"-> Gerando {len(chunks)} embeddings...")
+    chunk_contents = [c['content'] for c in all_final_chunks]
     
-        # NOVOS LOGS DE VERIFICAÇÃO CRÍTICOS:
-        print(f"DEBUG_EMBEDDING: Tipo de 'chunks': {type(chunks)}")
-        if chunks:
-            print(f"DEBUG_EMBEDDING: Tipo do primeiro item: {type(chunks[0])}")
-            print(f"DEBUG_EMBEDDING: Tamanho do primeiro item: {len(chunks[0])}")
+    try:
+        print(f"-> Gerando {len(chunk_contents)} embeddings...")
         
         # Chamada ao modelo de embedding da OpenAI
-        # Nota: Você pode precisar lidar com chamadas em lote (batching) se a lista for muito grande (> 2048 chunks)
         response = openai_client.embeddings.create(
-            input=chunks,
+            input=chunk_contents,
             model=EMBEDDING_MODEL
         )
         
-        # Extrai os vetores da resposta
         embeddings = [item.embedding for item in response.data]
         print("-> Geração de Embeddings concluída.")
+        
     except Exception as e:
         print(f"ERRO DE EMBEDDING: Falha ao gerar vetores.")
-        print(f"Verifique sua OPENAI_API_KEY ou cotas de uso.")
         traceback.print_exc()
         return False
 
     # 4. Persistência (Inserção no Supabase)
-    
-    # Monta a lista final de registros no formato do Supabase/pgvector
     records_to_insert = []
-    for i, chunk in enumerate(chunks):
+    
+    for i, chunk_data in enumerate(all_final_chunks):
+        # O metadado já está completo no chunk_data['metadata']
+        
+        # NOTE: O Supabase/pgvector requer que a coluna 'embedding' seja um array
+        # e a coluna 'metadata' seja um objeto JSONB.
+        
         records_to_insert.append({
-            "content": chunk,
+            "content": chunk_data['content'],
             "embedding": embeddings[i],
             "document_id": document_id,
             "filename": original_filename,
-            # 'metadata' é um campo JSONB no DB
-            "metadata": document_metadata
+            # CRUCIAL: O campo 'metadata' JSONB recebe o dicionário COMPLETO
+            "metadata": chunk_data['metadata'] 
         })
 
     print(f"-> Inserindo {len(records_to_insert)} registros na tabela '{TABLE_NAME}'...")
 
     try:
-        # Chamada real ao Supabase (usando a Service Key)
+        # [...] (Sua lógica de inserção no Supabase com try/except) [...]
         response = (
             supabase
             .table(TABLE_NAME)
             .insert(records_to_insert)
             .execute()
         )
-
-        # Verifica o sucesso
+        
         if response.data or (hasattr(response, 'count') and response.count is not None):
             print(f"-> INSERÇÃO REAL no Supabase bem-sucedida. {len(records_to_insert)} registros adicionados.")
             return True
@@ -264,6 +287,5 @@ async def run_ingestion_pipeline(refined_content: str, document_id: str, origina
 
     except Exception as e:
         print(f"ERRO FATAL DE PERSISTÊNCIA: Falha ao inserir no Supabase.")
-        print(f"Detalhes do Erro: {e}")
         traceback.print_exc()
         return False
