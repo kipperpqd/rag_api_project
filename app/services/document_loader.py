@@ -4,6 +4,7 @@ from typing import List, Tuple, Dict, Any, Union
 from pathlib import Path
 import odf.opendocument
 import odf.text
+from .ocr_processor import orchestrate_pre_ocr, CONTENT_MISSING_TEXTUAL
 
 # --- Importações de Bibliotecas de Terceiros ---
 try:
@@ -29,6 +30,37 @@ except ImportError:
 
 # --- Tipos de Saída ---
 DocumentContent = str
+# ----------------------------------------------------------------------
+# 1. VERIFICA SE O PDF É SCANEADO
+# ----------------------------------------------------------------------
+def _has_sufficient_native_text(file_path: Path) -> bool:
+    """
+    Verifica se o PDF possui uma quantidade mínima de texto nativo.
+    Usado para decidir se o Pré-OCR deve ser acionado.
+    """
+    try:
+        total_text_length = 0
+        with pdfplumber.open(file_path) as pdf:
+            # Checa apenas as primeiras páginas para performance
+            pages_to_check = min(3, len(pdf.pages)) 
+            
+            for i in range(pages_to_check):
+                page = pdf.pages[i]
+                # Usa uma extração simples, sem layout, para rapidez
+                text = page.extract_text(layout=False) 
+                if text:
+                    total_text_length += len(text.strip())
+
+        # Limiar: Se tiver menos de 100 caracteres nas 3 primeiras páginas, assume escaneado
+        MIN_CHARS_THRESHOLD = 100 
+        return total_text_length >= MIN_CHARS_THRESHOLD
+        
+    except Exception as e:
+        print(f"AVISO: Falha na detecção de texto nativo do PDF: {e}")
+        # Em caso de erro, assume que é escaneado para não perder o conteúdo
+        return False
+
+
 
 # ----------------------------------------------------------------------
 # 1. FUNÇÕES DE CARREGAMENTO (LOADERS)
@@ -45,35 +77,50 @@ def load_pdf_file(file_path: Path) -> Tuple[List[str], List[Any]]:
         
     print(f"-> PDF Loader: Processando texto e imagens de {file_path.name}")
     
-    texto_por_pagina: List[str] = []
-    imagens_para_analise: List[Image.Image] = []
+    texto_por_pagina = []
+    imagens_para_analise = []
     
     try:
-        # 1. Extração de texto nativo (pdfplumber)
+        # 1. Pré-Verificação e OCR (se necessário)
+        if not _has_sufficient_native_text(file_path):
+            print(f"-> PDF Loader: Detectado PDF escaneado/sem texto suficiente. Passando para Pré-OCR...")
+            
+            # Chama a função de OCR que retorna o texto corrigido por página
+            ocr_corrected_text_list = orchestrate_pre_ocr(file_path)
+            
+            if ocr_corrected_text_list:
+                texto_por_pagina = ocr_corrected_text_list
+                print(f"-> PDF Loader: Usando texto corrigido do Tesseract.")
+            else:
+                # Falha total no OCR, usa o extrator nativo (que será vazio)
+                print("-> PDF Loader: Pré-OCR falhou. Tentando extração nativa (pode falhar).")
+        
+        
+        # 2. Extração Final de Texto (Se for nativo OU se o Pré-OCR falhou/não foi acionado)
+        if not texto_por_pagina:
+            with pdfplumber.open(file_path) as pdf:
+                for page in pdf.pages:
+                    # Extrai o texto nativo
+                    text = page.extract_text(x_tolerance=2, y_tolerance=2, layout=False)
+                    
+                    if text and text.strip():
+                        texto_por_pagina.append(text)
+                    else:
+                        texto_por_pagina.append(CONTENT_MISSING_TEXTUAL)
+        
+        # 3. Extração de Imagens (Sempre necessária para potencial Refinamento Multimodal)
+        # O refinamento multimodal ainda pode ser necessário para gráficos, mesmo em PDFs nativos.
         with pdfplumber.open(file_path) as pdf:
             for page in pdf.pages:
-                text = page.extract_text()
-                if text:
-                    texto_por_pagina.append(text)
-                else:
-                    # Se não houver texto nativo (imagem ou PDF escaneado), insere placeholder
-                    texto_por_pagina.append("CONTENT_MISSING_TEXTUAL")
-        
-        # 2. Rasterização para imagens (pdf2image)
-        # Atenção: 'convert_from_path' é síncrono e usa Poppler (dependência do sistema)
-        # Se for um PDF muito grande, é aqui que o processo pode ser lento.
-        # Usa 'first_page=1' e 'last_page=None' (todas as páginas)
-        imagens_para_analise = convert_from_path(file_path, dpi=200)
+                # Extrai a imagem PIL para análise multimodal (requer Poppler)
+                page_image = page.to_image() 
+                imagens_para_analise.append(page_image.original) 
 
-        # 3. Tratamento de páginas sem texto (OCR/Multimodal)
-        # Se o texto nativo for 'CONTENT_MISSING_TEXTUAL', o ocr_processor.py usará a imagem
-        # correspondente em 'imagens_para_analise' para extrair o texto via OCR/LLM.
-
+        return texto_por_pagina, imagens_para_analise
+    
     except Exception as e:
-        print(f"ERRO CRÍTICO ao processar PDF {file_path.name}: {e}")
-        return [f"ERRO DE PROCESSAMENTO PDF: Falha ao ler o arquivo {file_path.name}"], []
-
-    return texto_por_pagina, imagens_para_analise
+        print(f"ERRO ao processar PDF {file_path.name}: {e}")
+        return [f"ERRO DE PROCESSAMENTO: Falha ao ler o arquivo {file_path.name}"], []
 
 
 def load_docx_file(file_path: Path) -> Tuple[List[str], List[Any]]:
