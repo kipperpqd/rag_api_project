@@ -103,8 +103,11 @@ async def _process_drive_resource_in_background(request: IngestionRequest):
     resource_id = request.resource_id
     user_id = request.user_id
     
-    print(f"--- COORDENADOR INICIADO para recurso: {resource_id} ---")
-
+    # === PONTO DE VERIFICAÇÃO DE SEGURANÇA ===
+    print(f"--- COORDENADOR: TAREFA DE BACKGROUND INICIADA ---")
+    print(f"DEBUG: Processando Recurso: {resource_id} para Usuário: {user_id}")
+    # ========================================
+    
     # 1. Obter metadados
     metadata = await get_resource_metadata(user_id, resource_id)
     if not metadata:
