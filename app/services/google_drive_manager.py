@@ -65,8 +65,8 @@ async def list_files_in_folder(user_id: str, folder_id: str) -> List[Dict]:
     files_to_process = []
     
     # Query: buscar arquivos DENTRO da pasta, excluir subpastas e itens na lixeira.
-    query = f"'{folder_id}' in parents and mimeType != '{DRIVE_MIME_TYPES['folder']}' and trashed=false"
-    
+    #query = f"'{folder_id}' in parents and mimeType != '{DRIVE_MIME_TYPES['folder']}' and trashed=false"
+    query = f"'{folder_id}' in parents and trashed=false"
     try:
         # Busca recursiva com paginação (caso haja mais de 100 arquivos)
         page_token = None
