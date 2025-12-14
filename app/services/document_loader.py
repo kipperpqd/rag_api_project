@@ -138,7 +138,7 @@ LOADER_MAPPING = {
 async def handle_document_load_from_path(
     file_path: Path, 
     original_filename: str
-) -> DocumentContent:
+) -> Tuple[str, List[Any], str]:
     """
     Despacha o carregamento do documento para a função correta com base na 
     extensão do nome do arquivo original.
