@@ -78,7 +78,16 @@ async def list_files_in_folder(user_id: str, folder_id: str) -> List[Dict]:
                 pageToken=page_token
             ).execute()
             
-            files_to_process.extend(results.get('files', []))
+            current_files = results.get('files', [])
+            print(f"DEBUG_DRIVE: Arquivos retornados da API: {len(current_files)}")
+            print(f"DEBUG_DRIVE: nextPageToken: {results.get('nextPageToken')}")
+            files_to_process.extend(current_files)
+            
+            # --- INSPEÇÃO ---
+            print(f"DEBUG_DRIVE: {len(current_files)} arquivos encontrados na página.")
+            if not current_files and page_token is None:
+                # Se não há arquivos E não há token para a próxima página, saia.
+                break
             page_token = results.get('nextPageToken')
             
             if page_token is None:
