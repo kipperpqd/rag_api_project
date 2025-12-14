@@ -15,7 +15,7 @@ from typing import List, Dict
 from ..services.document_loader import handle_document_load_from_path
 from ..services.ocr_processor import refine_extracted_content
 from ..services.vector_db_manager import run_ingestion_pipeline
-from ..services.document_analyzer import analyze_document_structure
+from ..services.document_analyzer import analyze_law_structure
 from ..core.drive_auth import get_drive_service
 
 # Importações do Manager (necessita das funções de download/listagem de pastas)
