@@ -5,6 +5,7 @@ from tempfile import TemporaryDirectory
 from pydantic import BaseModel
 from uuid import uuid4
 import shutil
+from pathlib import Path
 import asyncio
 import os
 import traceback
@@ -62,13 +63,16 @@ async def _process_single_file_for_ingestion(user_id: str, file_id: str, filenam
     try:
         # Etapa 1: Download
         # Chamamos download_drive_file, passando o caminho do diretório temporário
-        download_path = await download_drive_file(user_id, file_id, filename, temp_dir) 
+        str_download_path = await download_drive_file(user_id, file_id, filename, temp_dir) 
         
-        if not download_path:
+        if not str_download_path:
             # Esta mensagem de erro é ativada se download_drive_file retornar None
             print(f"ERRO: Falha no download de {filename}. Caminho inválido ou arquivo não encontrado.")
             return False
-
+        
+        #Converter a string do caminho em um objeto Path
+        download_path = Path(str_download_path)
+        
         # Etapa 2: Carregamento (O arquivo AGORA existe!)
         print(f"DEBUG: Etapa 2: Carregando documento de {download_path}...")
         document_content = await handle_document_load_from_path(download_path, filename)
