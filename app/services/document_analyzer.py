@@ -43,10 +43,11 @@ def analyze_law_structure(file_type: str, document_text: List[str]) -> List[Dict
         while i < len(sections):
             candidate = sections[i]
             # Usa a REGEX para verificar se o item é um marcador válido
-            if REGEX_ARTICLE.search(candidate): 
-                article_marker = candidate
-                i += 1
-                break
+            if candidate is not None and isinstance(candidate, str) and candidate.strip():
+                if REGEX_ARTICLE.search(candidate): 
+                    article_marker = candidate
+                    i += 1
+                    break
             # Se for apenas um resíduo vazio/ponto, avança (ignora)
             i += 1 
 
