@@ -13,6 +13,8 @@ pdf2image
 python-docx
 # Para arquivos PPTX (caso queira expandir)
 python-pptx 
+# Para arquivos ODT
+odfpy
 
 # *** OCR ***
 pytesseract
