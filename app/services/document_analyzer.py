@@ -38,25 +38,58 @@ def analyze_law_structure(file_type: str, document_text: List[str]) -> List[Dict
     # 3. Processamento dos Pares Artigo/Conteúdo
     while i < len(sections):
         
-        if i + 1 >= len(sections):
-            if sections[i].strip():
-                print(f"AVISO: Bloco final sem par de conteúdo: {sections[i][:50]}...")
-                section_data.append({
-                    "text": sections[i],
-                    "metadata": {"chunk_type": "RESIDUO", "chapter": current_chapter, "article": "N/A", "page_start": 1}
-                })
+        # 3a. Busca pelo próximo Artigo Válido (Marker)
+        article_marker = None
+        while i < len(sections):
+            candidate = sections[i]
+            # Usa a REGEX para verificar se o item é um marcador válido
+            if REGEX_ARTICLE.search(candidate): 
+                article_marker = candidate
+                i += 1
+                break
+            # Se for apenas um resíduo vazio/ponto, avança (ignora)
+            i += 1 
+
+        # Se o loop acima terminou e não encontrou um marcador, para.
+        if article_marker is None:
             break
             
-        article_marker = sections[i] 
-        article_content = sections[i+1]
+        # 3b. Busca pelo próximo Conteúdo Válido
+        article_content = None
+        j = i
+        content_parts = []
         
-        if not isinstance(article_marker, str) or not isinstance(article_content, str):
-            print(f"ERRO: Encontrado valor não-string no índice {i}. Pulando par.")
-            i += 2
-            continue
+        # O conteúdo é tudo que vier DEPOIS do marcador, até o próximo marcador de Artigo ou o final da lista.
+        while j < len(sections):
+            candidate = sections[j]
+            # Verifica se o próximo item é um novo Artigo (Se for, o conteúdo terminou)
+            if REGEX_ARTICLE.search(candidate):
+                break
+            
+            # Adiciona o conteúdo (se não for vazio) e avança
+            if candidate and candidate.strip():
+                content_parts.append(candidate)
+            j += 1
+        
+        # O conteúdo do Artigo é a junção das partes encontradas
+        article_content = "\n".join(content_parts)
+        
+        # Atualiza o índice principal para o próximo item após o conteúdo
+        i = j 
 
-        # ... (Lógica de Metadados de Artigo e Capítulo continua a mesma) ...
+        # --- Se falhar ao encontrar conteúdo, ignora o Artigo e continua (ou trata como um resíduo) ---
+        if not article_content.strip():
+            print(f"AVISO: Marcador de Artigo encontrado ({article_marker.strip()}) sem conteúdo associado. Pulando.")
+            continue # Vai para o próximo i
 
+        # --- Lógica de Metadados (A lógica aqui permanece a mesma que já está funcionando) ---
+        
+        # ... (Sua lógica de extração de Capítulos e Artigos aqui) ...
+        # (A lógica de extração que você já tem deve ser mantida aqui, 
+        # usando `article_marker` e `article_content` que agora são strings válidas)
+        
+        # Exemplo da lógica anterior que deve ser mantida/colocada aqui:
+        
         # Atualiza Capítulos
         chapter_match = REGEX_TITLE_OR_CHAPTER.search(article_marker)
         if chapter_match:
@@ -71,7 +104,7 @@ def analyze_law_structure(file_type: str, document_text: List[str]) -> List[Dict
         current_article = f"Artigo {article_match.group(0)}" if article_match else article_marker.strip()
         
         # Reconstrói a seção completa
-        full_section_text = f"{article_marker}{article_content}"
+        full_section_text = f"{article_marker.strip()}\n{article_content.strip()}"
         
         section_data.append({
             "text": full_section_text.strip(),
@@ -79,11 +112,9 @@ def analyze_law_structure(file_type: str, document_text: List[str]) -> List[Dict
                 "chunk_type": "LEGAL_ARTICLE",
                 "chapter": current_chapter,
                 "article": current_article,
-                "page_start": "N/A"
+                "page_start": "N/A" # Manter N/A se não houver lógica de página
             }
         })
-        
-        i += 2
         
     print(f"-> Análise Estrutural Concluída. {len(section_data)} seções identificadas.")
     return section_data
