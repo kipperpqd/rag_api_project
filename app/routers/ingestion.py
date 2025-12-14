@@ -82,7 +82,7 @@ async def _process_single_file_for_ingestion(user_id: str, file_id: str, filenam
         # ----------------------------------------------------
         print("DEBUG: Etapa 3: Iniciando Análise Estrutural...")
         # structured_sections: Lista de dicionários, cada um contendo 'text' e 'metadata' (Artigo, Capítulo, etc.)
-        structured_sections = analyze_document_structure(file_type, document_content)
+        structured_sections = analyze_law_structure(file_type, document_content)
         # ----------------------------------------------------
        
         # Etapa 4: Refinamento (LLM Multimodal para Gráficos/Tabelas)
