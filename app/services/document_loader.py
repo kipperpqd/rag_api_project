@@ -26,8 +26,16 @@ except ImportError:
 
 
 # --- Tipos de Saída ---
-DocumentContent = Tuple[List[str], List[Any], str] 
+DocumentContent = str
 
+# --- MAPA DE LOADERS ---
+# Mapeia a extensão (com ponto) para a função de carregamento
+LOADER_MAPPING: Dict[str, Callable[[Path], Tuple[DocumentContent, Any]]] = {
+    ".pdf": load_pdf_file,  # Função que lê PDF
+    ".docx": load_docx_file, # Função que lê DOCX
+    ".txt": load_txt_file,  # Função que lê TXT
+    # Adicione outros formatos suportados aqui (.md, .html, etc.)
+}
 
 # ----------------------------------------------------------------------
 # 1. FUNÇÕES DE CARREGAMENTO (LOADERS)
@@ -132,27 +140,44 @@ LOADER_MAP = {
     # Adicionar outros formatos aqui (ex: .pptx, .xlsx)
 }
 
+# ----------------------------------------------------------------------
+# FUNÇÃO CENTRAL DE DESPACHO
+# ----------------------------------------------------------------------
 
 async def handle_document_load_from_path(
     file_path: Path, 
     original_filename: str
 ) -> DocumentContent:
     """
-    Função principal que determina o formato do arquivo, chama o carregador apropriado
-    usando o caminho local, e retorna o conteúdo padronizado.
+    Despacha o carregamento do documento para a função correta com base na 
+    extensão do nome do arquivo original.
+
+    Args:
+        file_path: O caminho REAL do arquivo baixado (Path object, ex: /tmp/tmpXYZ/documento.pdf).
+        original_filename: O nome do arquivo como estava no Drive (str, ex: 'Documento.gdoc').
+
+    Returns:
+        O conteúdo extraído (DocumentContent).
     """
     
-    file_extension = Path(original_filename).suffix.lower()
+    # GARANTIA 1: Usa o nome original para determinar a EXTENSÃO LÓGICA
+    # Isso é CRUCIAL, pois um Google Doc (Documento.gdoc) é baixado como PDF (Documento.pdf).
+    file_extension = Path(original_filename).suffix.lower() 
     
-    if file_extension not in LOADER_MAP:
-        print(f"ERRO: Formato de arquivo não suportado: {file_extension}.")
-        raise ValueError(f"Formato de arquivo não suportado: {file_extension}")
+    print(f"DEBUG Loader: Arquivo original: '{original_filename}'. Extensão detectada: '{file_extension}'")
 
-    loader_function = LOADER_MAP[file_extension]
+    if not file_extension or file_extension not in LOADER_MAPPING:
+        # Se for um formato sem loader definido (ou extensões estranhas do Drive)
+        raise ValueError(f"Formato de arquivo não suportado para ingestão: {original_filename} (Extensão: {file_extension})")
+
+    # Obtém a função de carregamento correspondente
+    loader_function = LOADER_MAPPING[file_extension]
     
-    # Executa a função de carregamento
-    document_text, document_images = loader_function(file_path)
-    
-    print(f"Documento carregado com sucesso. Extensão: {file_extension}")
-    
-    return document_text, document_images, file_extension
+    try:
+        # GARANTIA 2: Passa o objeto Path para os loaders internos (resolveu o AttributeError)
+        document_text, _ = loader_function(file_path)
+        return document_text
+        
+    except Exception as e:
+        print(f"ERRO durante o carregamento do arquivo {original_filename} usando {loader_function.__name__}: {e}")
+        raise
