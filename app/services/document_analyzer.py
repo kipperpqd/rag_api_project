@@ -4,20 +4,15 @@ import re
 from typing import List, Dict, Any, Tuple
 
 # Definições de Regex para Leis:
-# 1. Título/Capítulo: Encontra linhas inteiras que parecem títulos grandes
-REGEX_TITLE_OR_CHAPTER = re.compile(r"^\s*(TÍTULO|CAPÍTULO)\s+.*?\s*$", re.IGNORECASE | re.MULTILINE)
-
-# 2. Artigo: Encontra "Art. X" ou "Artigo X" no início da linha
+REGEX_TITLE_OR_CHAPTER = re.compile(r"^\s*(TÍTULO|CAPÍTULO|SEÇÃO)\s+.*?\s*$", re.IGNORECASE | re.MULTILINE)
 REGEX_ARTICLE = re.compile(r"^(Art\.|Artigo)\s+\d+\s*(\.\s*)?.*", re.IGNORECASE | re.MULTILINE)
-
-# 3. Parágrafo: Encontra o símbolo de parágrafo (§) ou a palavra "Parágrafo"
 REGEX_PARAGRAPH = re.compile(r"^\s*(\§\s+\d+|Parágrafo único\.|Parágrafo\s+\d+\.)", re.MULTILINE)
 
+# ... (Sua função analyze_law_structure vai aqui, inalterada) ...
 
 def analyze_law_structure(document_text: List[str]) -> List[Dict[str, Any]]:
     """
-    Analisa o texto plano de uma Lei para identificar Artigos, Capítulos e Parágrafos.
-    Retorna uma lista de seções com metadados para guiar o chunking.
+    [CÓDIGO DA FUNÇÃO analyze_law_structure ANTERIOR VAI AQUI, INALTERADO]
     """
     print("-> Análise Estrutural: Identificando marcadores de Lei...")
     
@@ -35,10 +30,15 @@ def analyze_law_structure(document_text: List[str]) -> List[Dict[str, Any]]:
 
     # O split retorna o Artigo em uma posição e o conteúdo dele na próxima
     if not sections or len(sections) < 2:
-        print("AVISO: Nenhuma estrutura de Artigo detectada. Tratando como texto plano.")
-        return [{"text": full_text, "metadata": {"chunk_type": "TEXT_BLOCK", "page_start": 1}}]
+        # Tenta quebrar usando TÍTULO/CAPÍTULO como fallback
+        sections = re.split(REGEX_TITLE_OR_CHAPTER, full_text)
+        if len(sections) < 2:
+            print("AVISO: Nenhuma estrutura de Artigo, Título ou Capítulo detectada. Tratando como texto plano.")
+            return [{"text": full_text, "metadata": {"chunk_type": "TEXT_BLOCK", "page_start": 1}}]
 
-    # 2. Iterar sobre as Seções Encontradas
+    # ... (Resto da sua lógica analyze_law_structure, que itera sobre 'sections') ...
+    # Se você quiser apenas a função atualizada, vamos garantir que a iteração esteja lá:
+    
     i = 0
     # O primeiro elemento é o preâmbulo/início do documento
     if sections[0].strip():
@@ -83,16 +83,26 @@ def analyze_law_structure(document_text: List[str]) -> List[Dict[str, Any]]:
         
     print(f"-> Análise Estrutural Concluída. {len(section_data)} seções identificadas.")
     return section_data
+    
 
 
 def analyze_document_structure(file_type: str, document_text: List[str]) -> List[Dict[str, Any]]:
     """Função orquestradora para análise estrutural baseada no tipo de documento."""
     
-    # 1. Lógica Condicional
-    if file_type in ['.pdf', '.txt', '.odt'] and 'Lei' in document_text[0][:100]:
-        # Heurística simples: se for PDF/TXT/ODT e a primeira linha mencionar 'Lei', tenta o analisador de Lei.
+    full_text_sample = "\n".join(document_text)[:500].upper() # Amostra grande e maiúscula
+
+    # Heurística: Checa por marcadores de Lei OU pela palavra "Lei" ou "Artigo" no início
+    is_legal_document = (
+        'LEI' in full_text_sample or 
+        'DECRETO' in full_text_sample or
+        'ARTIGO' in full_text_sample or
+        re.search(r"^(Art\.|Artigo)\s+\d+", full_text_sample) is not None
+    )
+
+    if file_type in ['.pdf', '.txt', '.odt'] and is_legal_document:
+        print(f"-> Análise Estrutural: Detectado formato Legal. Acionando analisador de Lei.")
         return analyze_law_structure(document_text)
     
-    # 2. Fallback: Documentos simples (ou Livros sem análise estrutural implementada)
+    # Fallback: Documentos simples
     print("-> Análise Estrutural: Usando Fallback de Texto Plano.")
     return [{"text": "\n".join(document_text), "metadata": {"chunk_type": "TEXT_BLOCK", "page_start": 1}}]
