@@ -75,11 +75,15 @@ async def _process_single_file_for_ingestion(user_id: str, file_id: str, filenam
         
         # Etapa 2: Carregamento (O arquivo AGORA existe!)
         print(f"DEBUG: Etapa 2: Carregando documento de {download_path}...")
-        document_content = await handle_document_load_from_path(download_path, filename)
+        document_content, document_images, file_type = await handle_document_load_from_path(download_path, filename) 
         
         # Etapa 3: Refinamento (Plumber/OCR)
         print("DEBUG: Etapa 3: Refinando conteúdo...")
-        refined_content = await refine_extracted_content(document_content)
+        refined_content = await refine_extracted_content(
+            document_content, 
+            document_images, 
+            file_type # <--- TUDO SENDO PASSADO
+        )
         
         # Etapa 4: Pipeline RAG (Chunking/Embedding/DB)
         print("DEBUG: Etapa 4: Iniciando Pipeline RAG...")
